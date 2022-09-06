@@ -1,0 +1,16 @@
+include README.md
+include LICENSE
+include pyproject.toml
+include setup.cfg
+
+recursive-include fiberlab *.pyx *.c *.pxd *.h
+#recursive-include fiberlab/data *
+#recursive-include docs *
+recursive-include scripts *
+
+prune build
+prune docs/_build
+prune docs/api
+
+global-exclude *.pyc *.o *.so *.DS_Store
+
