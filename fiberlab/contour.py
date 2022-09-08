@@ -1,8 +1,9 @@
-
 import numpy
-from scipy import stats, optimize
+from scipy import stats, optimize, signal, interpolate
 from skimage import measure
 from astropy.stats import sigma_clip
+
+from IPython import embed
 
 
 def sigma_clip_stdfunc_mad(data, **kwargs):
@@ -179,7 +180,50 @@ def get_bg(img, clip_iter=None, sigma_upper=5.):
     return bkg, sig, nrej
 
 
-def get_contour(img, threshold, bg=None, sig=None, clip_iter=10, sigma_upper=3.):
+def iterative_filter(data, window_length, polyorder, clip_iter=None, sigma=3., **kwargs):
+    """
+    Iteratively filter and reject 1D data.
+
+    kwargs are passed directly to scipy.signal.savgol_filter.
+    """
+    if data.ndim > 1:
+        raise ValueError('Data must be 1D.')
+    if clip_iter is None:
+        return signal.savgol_filter(data, window_length, polyorder, **kwargs)
+
+    _sigma = numpy.squeeze(numpy.asarray([sigma]))
+    if _sigma.size == 1:
+        _sigma = numpy.array([sigma, sigma])
+    elif _sigma.size > 2:
+        raise ValueError('Either provide a single sigma for both lower and upper rejection, or '
+                         'provide them separately.  Cannot provide more than two values.')
+
+    nrej = 1
+    i = 0
+    _data = numpy.ma.MaskedArray(data)
+    while i < clip_iter:
+        bpm = numpy.ma.getmaskarray(_data)
+        gpm = numpy.logical_not(bpm)
+        _filt = signal.savgol_filter(_data[gpm], window_length, polyorder, **kwargs)
+        tmp = sigma_clip(_data[gpm] - _filt, sigma_lower=_sigma[0], sigma_upper=_sigma[1],
+                         stdfunc=sigma_clip_stdfunc_mad, maxiters=1)
+        _bpm = numpy.ma.getmaskarray(tmp)
+        if not numpy.any(_bpm):
+            break
+        bpm[gpm] |= _bpm
+        _data[bpm] = numpy.ma.masked
+
+    gpm = numpy.logical_not(bpm)
+    _filt = signal.savgol_filter(data[gpm], window_length, polyorder, **kwargs)
+    x = numpy.arange(data.size)
+    return interpolate.interp1d(x[gpm], _filt)(x)
+
+
+class ContourError(Exception):
+    pass
+
+
+def get_contour(img, threshold=None, bg=None, sig=None, clip_iter=10, sigma_upper=3.):
 
     # Compute the background flux, the standard deviation in the
     # background, and the number of rejected pixels
@@ -193,10 +237,15 @@ def get_contour(img, threshold, bg=None, sig=None, clip_iter=10, sigma_upper=3.)
 
     # Find the contour matching the defined sigma threshold
     img_bksub = img - bkg
+    if threshold is None:
+        threshold = 2 * numpy.std(img_bksub / sig)
     level = threshold*sig
 
     # Transpose to match the numpy/matplotlib convention
-    contour = measure.find_contours(img_bksub.T, level=level) 
+    contour = measure.find_contours(img_bksub.T, level=level)
+    if len(contour) == 0:
+        raise ContourError('no contours found')
+
     # Only keep one contour with the most number of points.
     ci = -1
     nc = 0
@@ -204,6 +253,108 @@ def get_contour(img, threshold, bg=None, sig=None, clip_iter=10, sigma_upper=3.)
         if p.shape[0] > nc:
             nc = p.shape[0]
             ci = i
-    return contour[ci]
+
+    return level, contour[ci], sig, bkg
+
+
+def growth_lim(a, lim, fac=1.0, midpoint=None, default=[0., 1.]):
+    """
+    Set the plots limits of an array based on two growth limits.
+
+    Args:
+        a (array-like):
+            Array for which to determine limits.
+        lim (:obj:`float`):
+            Fraction of the total range of the array values to cover. Should
+            be in the range [0, 1].
+        fac (:obj:`float`, optional):
+            Factor to contract/expand the range based on the growth limits.
+            Default is no change.
+        midpoint (:obj:`float`, optional):
+            Force the midpoint of the range to be centered on this value. If
+            None, set to the median of the data.
+        default (:obj:`list`, optional):
+            Default range to return if `a` has no data.
+
+    Returns:
+        :obj:`list`: Lower and upper limits for the range of a plot of the
+        data in `a`.
+    """
+    # Get the values to plot
+    _a = a.compressed() if isinstance(a, numpy.ma.MaskedArray) else numpy.asarray(a).ravel()
+    if len(_a) == 0:
+        # No data so return the default range
+        return default
+
+    # Sort the values
+    srt = numpy.ma.argsort(_a)
+
+    # Set the starting and ending values based on a fraction of the
+    # growth
+    _lim = 1.0 if lim > 1.0 else lim
+    start = int(len(_a)*(1.0-_lim)/2)
+    end = int(len(_a)*(_lim + (1.0-_lim)/2))
+    if end == len(_a):
+        end -= 1
+
+    # Set the full range and increase it by the provided factor
+    Da = (_a[srt[end]] - _a[srt[start]])*fac
+
+    # Set the midpoint if not provided
+    mid = (_a[srt[start]] + _a[srt[end]])/2 if midpoint is None else midpoint
+
+    # Return the range for the plotted data
+    return [ mid - Da/2, mid + Da/2 ]
+
+
+def atleast_one_decade(lim):
+    """
+    Increase a provided set of limits so that they span at least one decade.
+
+    Args:
+        lim (array-like):
+            A two-element object with, respectively, the lower and upper limits
+            on a range.
+    
+    Returns:
+        :obj:`list`: The adjusted lower and upper limits on the range.
+    """
+    lglim = numpy.log10(lim)
+    if int(lglim[1]) - int(numpy.ceil(lglim[0])) > 0:
+        return (10**lglim).tolist()
+    m = numpy.sum(lglim)/2
+    ld = lglim[0] - numpy.floor(lglim[0])
+    fd = numpy.ceil(lglim[1]) - lglim[1]
+    w = lglim[1] - m
+    dw = ld*1.01 if ld < fd else fd*1.01
+    _lglim = numpy.array([m - w - dw, m + w + dw])
+
+    # TODO: The next few lines are a hack to avoid making the upper limit to
+    # large. E.g., when lim = [ 74 146], the output is [11 1020]. This pushes
+    # the middle of the range to lower values.
+    dl = numpy.diff(_lglim)[0]
+    if dl > 1 and dl > 3*numpy.diff(lglim)[0]:
+        return atleast_one_decade([lim[0]/3,lim[1]])
+
+    return atleast_one_decade((10**_lglim).tolist())
+    
+
+def rotate_y_ticks(ax, rotation, va):
+    """
+    Rotate all the existing y tick labels by the provided rotation angle
+    (deg) and reset the vertical alignment.
+
+    Args:
+        ax (`matplotlib.axes.Axes`_):
+            Rotate the tick labels for this Axes object. **The object is
+            edited in place.**
+        rotation (:obj:`float`):
+            Rotation angle in degrees
+        va (:obj:`str`):
+            Vertical alignment for the tick labels.
+    """
+    for tick in ax.get_yticklabels():
+        tick.set_rotation(rotation)
+        tick.set_verticalalignment(va)
 
 
