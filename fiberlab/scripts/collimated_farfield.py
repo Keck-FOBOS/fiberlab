@@ -28,6 +28,10 @@ class CollimatedFarField(scriptbase.ScriptBase):
         parser.add_argument('-s', '--snr_img', default=False, action='store_true',
                             help='If creating the QA plot, show the estimated S/N of the data '
                                  'instead of the counts.')
+        parser.add_argument('-r', '--ring_box', default=None, type=float,
+                            help='Limit the plotted image regions to this times the best-fitting '
+                                 'peak of the ring flux distribution.  If None, the full image '
+                                 'is shown.')
         return parser
 
     @staticmethod
@@ -57,7 +61,8 @@ class CollimatedFarField(scriptbase.ScriptBase):
                                                                 pixelsize=args.pixelsize,
                                                                 distance=args.distance,
                                                                 plot_file=plot_file,
-                                                                snr_img=args.snr_img)
+                                                                snr_img=args.snr_img,
+                                                                ring_box=args.ring_box)
         print('# Result from fobos_collimated_farfield script')
         print(f'# Written: {time.strftime("%a %d %b %Y %H:%M:%S",time.localtime())}')
         print(f'# Image file: {img_file.name}')

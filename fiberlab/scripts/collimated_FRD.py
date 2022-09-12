@@ -24,6 +24,10 @@ class CollimatedFRD(scriptbase.ScriptBase):
         parser.add_argument('-t', '--threshold', default=default_threshold(), type=float,
                             help='S/N threshold that sets the contour used to identify the center '
                                  'of the output ring.')
+        parser.add_argument('-r', '--ring_box', default=None, type=float,
+                            help='Limit the plotted image regions to this times the best-fitting '
+                                 'peak of the ring flux distribution.  If None, the full image '
+                                 'is shown.')
         parser.add_argument('-o', '--oroot', default=str(Path().resolve()), type=str,
                             help='Directory for output files')
         parser.add_argument('-f', '--files', default=None, type=str,
@@ -70,13 +74,15 @@ class CollimatedFRD(scriptbase.ScriptBase):
         z0_rad, z0_peak, z0_fwhm \
                 = collimated.collimated_farfield_output(z0, bkg_file=z0_bg, threshold=z0_thresh,
                                                         pixelsize=args.pixelsize,
-                                                        plot_file=plot_file)
+                                                        plot_file=plot_file,
+                                                        ring_box=args.ring_box)
         plot_file = oroot / f'{z1.with_suffix("").name}_qa.png'
         print(f'Analyzing {z1.name}')
         z1_rad, z1_peak, z1_fwhm \
                 = collimated.collimated_farfield_output(z1, bkg_file=z1_bg, threshold=z1_thresh,
                                                         pixelsize=args.pixelsize,
-                                                        plot_file=plot_file)
+                                                        plot_file=plot_file,
+                                                        ring_box=args.ring_box)
 
         # Use the known distance between the two z images to get the distance
         # between the fiber output and z1.
@@ -107,11 +113,14 @@ class CollimatedFRD(scriptbase.ScriptBase):
                                                                 threshold=a_thresh[i],
                                                                 pixelsize=args.pixelsize,
                                                                 distance=distance,
-                                                                plot_file=plot_file)
+                                                                plot_file=plot_file,
+                                                                ring_box=args.ring_box)
         else:
             a_rad = a_peak = a_fwhm = None
 
-        # TODO: Save sigma and level
+        # TODO:
+        #   - Save sigma and level
+        #   - Create plot that shows results
 
         # Main output file
         _ofile = Path(args.ofile).resolve()

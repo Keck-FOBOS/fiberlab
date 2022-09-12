@@ -11,6 +11,7 @@ from matplotlib import pyplot, ticker
 from . import contour
 from .io import bench_image
 
+
 def default_threshold():
     """
     The default threshold to use for defining the contour used to determine the
@@ -18,8 +19,55 @@ def default_threshold():
     """
     return 1.5
 
+
+def convert_radius(r, pixelsize=None, distance=None, inverse=False):
+    """
+    Convert radius coordinates from pixels to mm or degrees.
+
+    Args:
+        r (`numpy.ndarray`_):
+            Radius **in pixels** for the forward operation.  For the reverse
+            operation (see ``inverse``), the radius should be in degrees if both
+            ``pixelsize`` and ``distance`` are provided, or in mm if only
+            ``pixelsize`` is provided.
+        pixelsize (:obj:`float`, optional):
+            Size of the image pixels in mm.
+        distance (:obj:`float`, optional):
+            Distance from the fiber output to the detector in mm.
+        inverse (:obj:`bool`, optional):
+            Perform the inverse operation; i.e., convert radius coordinates from
+            mm or degrees to pixels.
+
+    Returns:
+        :obj:`tuple`: A string with the radius units and the updated radius
+        values converted to either mm in the detector plane or output angle in
+        degrees with respect to the fiber face normal vector.  For the reverse
+        (see ``inverse``) operation, the returned units should be pixels.
+    """
+    _r = r.copy()
+    if inverse:
+        if pixelsize is not None and distance is not None :
+            _r = distance * numpy.tan(numpy.radians(_r))
+            r_units = 'mm'
+        if pixelsize is not None :
+            _r /= pixelsize 
+            r_units = 'pix'
+        return r_units, _r
+
+    # Convert the radius from pixels to mm
+    r_units = 'pix'
+    if pixelsize is not None :
+        _r *= pixelsize 
+        r_units = 'mm'
+    # Convert the radius from mm to angle
+    if pixelsize is not None and distance is not None :
+        _r = numpy.degrees(numpy.arctan(_r/distance))
+        r_units = 'deg'
+    return r_units, _r
+
+
 def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsize=None,
-                               distance=None, plot_file=None, snr_img=False):
+                               distance=None, plot_file=None, snr_img=False, ring_box=None):
     """
     Analyze an output far-field image for a collimated input beam.
 
@@ -41,6 +89,9 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
         snr_img (:obj:`bool`, optional):
             If creating the QA plot, plot the estimated S/N (used to set the
             contour level) instead of the measured counts.
+        ring_box (:obj:`float`, optional):
+            Limit the plotted image regions to this times the best-fitting peak
+            of the ring flux distribution.  If None, the full image is shown.
     
     Returns:
         :obj:`tuple`: Three floating-point objects providing the radius at which
@@ -69,16 +120,8 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
     ny, nx = img_nobg.shape
     x, y = numpy.meshgrid(numpy.arange(nx), numpy.arange(ny))
     circ_r, circ_theta = contour.Circle.polar(x, y, circ_p)
-    r_units = 'pix'
 
-    # Convert the radius from pixels to mm
-    if pixelsize is not None :
-        circ_r *= pixelsize 
-        r_units = 'mm'
-    # Convert the radius from mm to angle
-    if pixelsize is not None and distance is not None :
-        circ_r = numpy.degrees(numpy.arctan(circ_r/distance))
-        r_units = 'deg'
+    r_units, circ_r = convert_radius(circ_r, pixelsize=pixelsize, distance=distance)
 
     # Collapse the flux in radius
     srt = numpy.argsort(circ_r.ravel())
@@ -104,16 +147,18 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
 
     if plot_file is not None:
         collimated_farfield_output_plot(img_file, img_nobg, model, _threshold, level, trace,
-                                        circ_p[0], circ_p[1], radius, flux, smooth_flux, peak_indx,
+                                        circ_p, radius, flux, smooth_flux, peak_indx,
                                         left, right, snr_img=snr_img, r_units=r_units,
+                                        ring_box=ring_box, pixelsize=pixelsize, distance=distance,
                                         ofile=None if plot_file == 'show' else plot_file)
 
     return radius[peak_indx], flux[peak_indx], right-left
 
 
-def collimated_farfield_output_plot(img_file, img, model, threshold, level, trace, xc, yc, radius,
+def collimated_farfield_output_plot(img_file, img, model, threshold, level, trace, circ_p, radius,
                                     flux, smooth_flux, peak_indx, left, right, snr_img=False,
-                                    r_units='pix', ofile=None):
+                                    r_units='pix', ring_box=None, pixelsize=None, distance=None,
+                                    ofile=None):
     """
     Diagnostic plot for the measurements of a collimated far-field output beam.
 
@@ -131,12 +176,9 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
         trace (`numpy.ndarray`_):
             The contour tracing the outside of the ring used to define the ring
             center.
-        xc (:obj:`float`):
-            The best-fitting center of the ring in pixel coordinates.  Note this
-            is along the *2nd* axis of ``img``.
-        yc (:obj:`float`):
-            The best-fitting center of the ring in pixel coordinates.  Note this
-            is along the *1st* axis of ``img``.
+        circ_p (:obj:`tuple`):
+            Tuple with the best-fitting parameters for the ring contour: x
+            center (along 2nd axis), y center (along 1st axis), and radius.
         radius (`numpy.ndarray`_):
             A (sorted) 1D array with the radii of all pixels in ``img`` relative
             to the ring center.
@@ -159,12 +201,28 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
             the measured counts.
         r_umits (:obj:`str`, optional):
             The units of the radius vector.
+        ring_box (:obj:`float`, optional):
+            Limit the plotted image regions to this times the best-fitting
+            contour radius.  If None, the full image is shown.
         ofile (:obj:`str`, `Path`_, optional_):
             Name of the QA file to produce.  If ``'show'``, no file is produced,
             but the QA plot is displayed in a matplotlib window.
     """
+    xc, yc, rc = circ_p
     ny, nx = img.shape
-    aspect = ny/nx
+    extent = [-0.5, nx-0.5, -0.5, ny-0.5]
+    if ring_box is None:
+        aspect = ny/nx
+        xlim = None
+        ylim = None
+    else:
+#        peak_r = convert_radius(numpy.array([radius[peak_indx]]), pixelsize=pixelsize,
+#                                distance=distance, inverse=True)[1][0] 
+        peak_r = convert_radius(numpy.array([right]), pixelsize=pixelsize, distance=distance,
+                                inverse=True)[1][0] 
+        xlim = [xc - ring_box*peak_r, xc + ring_box*peak_r]
+        ylim = [yc - ring_box*peak_r, yc + ring_box*peak_r]
+        aspect = 1.
 
     resid = img - model
     sig = level / threshold
@@ -191,13 +249,17 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
     ax.tick_params(which='both', left=False, bottom=False)
     ax.xaxis.set_major_formatter(ticker.NullFormatter())
     ax.yaxis.set_major_formatter(ticker.NullFormatter())
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    if ylim is not None:
+        ax.set_ylim(ylim)
 
     if snr_img:
         imgplt = ax.imshow(img/sig, origin='lower', interpolation='nearest', cmap=cmap,
-                           vmin=snr_lim[0], vmax=snr_lim[1])
+                           vmin=snr_lim[0], vmax=snr_lim[1], extent=extent)
     else:
         imgplt = ax.imshow(img, origin='lower', interpolation='nearest', cmap=cmap,
-                           vmin=image_lim[0], vmax=image_lim[1])
+                           vmin=image_lim[0], vmax=image_lim[1], extent=extent)
     ax.scatter(xc, yc, marker='+', color='w', lw=2, zorder=4)
     cax = fig.add_axes([sx + dx/5, ey-dy-0.02, 3*dx/5, 0.01]) 
     cb = fig.colorbar(imgplt, cax=cax, orientation='horizontal')
@@ -210,9 +272,13 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
     ax.tick_params(which='both', left=False, bottom=False)
     ax.xaxis.set_major_formatter(ticker.NullFormatter())
     ax.yaxis.set_major_formatter(ticker.NullFormatter())
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    if ylim is not None:
+        ax.set_ylim(ylim)
 
     imgplt = ax.imshow(model, origin='lower', interpolation='nearest', cmap=cmap,
-                       vmin=image_lim[0], vmax=image_lim[1])
+                       vmin=image_lim[0], vmax=image_lim[1], extent=extent)
     ax.scatter(xc, yc, marker='+', color='w', lw=2, zorder=4)
     ax.plot(trace[:,0], trace[:,1], color='w', lw=0.5)
     cax = fig.add_axes([sx + dx+buff + dx/5, ey-dy-0.02, 3*dx/5, 0.01]) 
@@ -226,9 +292,13 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
     ax.tick_params(which='both', left=False, bottom=False)
     ax.xaxis.set_major_formatter(ticker.NullFormatter())
     ax.yaxis.set_major_formatter(ticker.NullFormatter())
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    if ylim is not None:
+        ax.set_ylim(ylim)
 
     imgplt = ax.imshow(resid, origin='lower', interpolation='nearest', cmap='RdBu_r',
-                       vmin=resid_lim[0], vmax=resid_lim[1])
+                       vmin=resid_lim[0], vmax=resid_lim[1], extent=extent)
     cax = fig.add_axes([sx + 2*(dx+buff) + dx/5, ey-dy-0.02, 3*dx/5, 0.01]) 
     cb = fig.colorbar(imgplt, cax=cax, orientation='horizontal')
 
@@ -236,7 +306,7 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
             bbox=dict(facecolor='k', alpha=0.3, edgecolor='none'))
  
     # Flux vs radius
-    ax = fig.add_axes([0.07, 0.17, 0.90, 0.48])
+    ax = fig.add_axes([0.08, 0.17, 0.90, 0.42])
     ax.set_xlim(radius_lim)
     ax.minorticks_on()
     ax.tick_params(which='major', length=8, direction='in', top=True, right=True)

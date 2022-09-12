@@ -91,14 +91,14 @@ def find_collimated_farfield_files(root):
     z0 = sorted(list(_root.glob('z0*')))
     if len(z0) > 1:
         raise ValueError('More than one z0 image found.  Directory should only have one of '
-                            f'the following: {z0}')
+                            f'the following: {[f.name for f in z0]}')
     if len(z0) == 0:
         raise ValueError('Could not find z0 image.')
     z0 = z0[0]
     z1 = sorted(list(_root.glob('z1*')))
     if len(z1) > 1:
         raise ValueError('More than one z1 image found.  Directory should only have one of '
-                            f'the following: {z1}')
+                            f'the following: {[f.name for f in z1]}')
     if len(z1) == 0:
         raise ValueError('Could not find z1 image.')
     z1 = z1[0]
@@ -107,7 +107,8 @@ def find_collimated_farfield_files(root):
     bg = sorted(list(_root.glob('bg*')))
     if len(bg) >= 1:
         if len(bg) > 1:
-            warnings.warn(f'Found more than one background image: {bg}.  Using the first one.')
+            warnings.warn(f'Found more than one background image: {[f.name for f in bg]}.  '
+                          'Using the first one.')
         bg = bg[0]
     else:
         warnings.warn('No background images found.  Will attempt to use main image to set '

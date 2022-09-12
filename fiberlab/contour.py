@@ -223,6 +223,7 @@ class ContourError(Exception):
     pass
 
 
+# TODO: Allow to smooth the image before finding the contour
 def get_contour(img, threshold=None, bg=None, sig=None, clip_iter=10, sigma_upper=3.):
 
     # Compute the background flux, the standard deviation in the
