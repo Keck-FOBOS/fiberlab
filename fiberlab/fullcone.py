@@ -1,7 +1,6 @@
 """
-Module with methods used to analyze and plot collimated test images.
-""" 
-
+Module with methods used to analyze and plot full-cone test images.
+"""
 from IPython import embed
 
 import numpy
@@ -17,13 +16,15 @@ def default_threshold():
     The default threshold to use for defining the contour used to determine the
     center of the output beam.
     """
-    return 1.5
+    return 3.0
 
 
-def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsize=None,
-                               distance=None, plot_file=None, snr_img=False, ring_box=None):
+def fullcone_farfield_output(img_file, bkg_file=None, threshold=None, clip_iter=10,
+                             sigma_lower=100., sigma_upper=3., local_bg_fac=None, local_iter=1,
+                             pixelsize=None, distance=None, plot_file=None, snr_img=False,
+                             ring_box=None):
     """
-    Analyze an output far-field image for a collimated input beam.
+    Analyze an output far-field image for a full-cone input beam.
 
     Args:
         img_file (:obj:`str`, `Path`_):
@@ -33,6 +34,12 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
         threshold (:obj:`float`, optional):
             S/N threshold of the contour used to define the center of the ring.
             If None, see :func:`default_threshold`.
+        local_bg_fac (:obj:`float`, optional):
+            Number of HWHM at which to determine the local background
+            level.  If None, no local background is estimated.
+        local_iter (:obj:`int`, optional):
+            Number of iterations used for determining the local
+            background.  Ignored if ``local_bg_fac`` is None.
         pixelsize (:obj:`float`, optional):
             Size of the image pixels in mm.
         distance (:obj:`float`, optional):
@@ -63,7 +70,9 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
 
     # Get the contour to use for finding the image center
     _threshold = default_threshold() if threshold is None else threshold
-    level, trace, trace_sig, trace_bkg = contour.get_contour(img_nobg, threshold=_threshold)
+    level, trace, trace_sig, trace_bkg \
+            = contour.get_contour(img_nobg, threshold=_threshold, clip_iter=clip_iter,
+                                  sigma_lower=sigma_lower, sigma_upper=sigma_upper)
     # Remove any residual background
     img_nobg -= trace_bkg
 
@@ -75,45 +84,86 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
     x, y = numpy.meshgrid(numpy.arange(nx), numpy.arange(ny))
     circ_r, circ_theta = contour.Circle.polar(x, y, circ_p)
 
-    r_units, circ_r = contour.convert_radius(circ_r, pixelsize=pixelsize, distance=distance)
-
-    # Collapse the flux in radius
+    # Construct 1D vectors with data sorted by radius:
     srt = numpy.argsort(circ_r.ravel())
     radius = circ_r.ravel()[srt]
+    #   - Flux
     flux = img_nobg.ravel()[srt]
+    #   - Aperture area
+    area = numpy.pi*radius**2
+    #   - Cumulative sum of the flux to get the EE (growth) curve
+    ee = numpy.cumsum(flux)
 
-    # Smooth it
-    smooth_flux = contour.iterative_filter(flux, 301, 2) #, clip_iter=10, sigma=5.)
+    # Iteratively determine a local background, if requested
+    bg_r = None
+    local_bg = 0.
+    if local_bg_fac is not None:
+        for i in range(local_iter):
+            # Get the half-width of the EE curve
+            hwhm = interpolate.interp1d(ee/ee[-1], radius)([0.5])[0]
+            # Get the background in the selected regions
+            bg_r = local_bg_fac*hwhm
+            indx = radius > bg_r
+            _local_bg = contour.get_bg(flux[indx], clip_iter=clip_iter, sigma_lower=sigma_lower,
+                                       sigma_upper=sigma_upper)[0]
+            # Subtract it from the image and flux
+            img_nobg -= _local_bg
+            flux -= _local_bg
+            # Recompute the EE curve
+            ee = numpy.cumsum(flux)
+            # Add it to the total
+            local_bg += _local_bg
 
-    # Find the radius of the peak
-    peak_indx = numpy.argmax(smooth_flux)
+    # Construct a model of the luminosity distribution using the EE
+    # curve
+    # - Sample the measured EE curve at discrete radii
+    model_radius = numpy.linspace(0,max(radius),500)[1:]
+    model_ee = numpy.zeros_like(model_radius)
+    indx = (model_radius > numpy.amin(radius)) & (model_radius < numpy.amax(radius))
+    model_ee[indx] = interpolate.interp1d(radius, ee)(model_radius[indx])
+    # - Handle extrapolation
+    indx = (model_radius <= numpy.amin(radius))
+    if any(indx):
+        model_ee[indx] = ee[0]
+    indx = (model_radius >= numpy.amax(radius))
+    if any(indx):
+        model_ee[indx] = ee[-1]
+    # - Construct the model flux as the derivative of the EE curve
+    model_flux = numpy.append(model_ee[0]/model_radius[0]**2,
+                              numpy.diff(model_ee)/numpy.diff(model_radius**2)) / numpy.pi
+    # - Interpolate the 1D model into a 2D image
+    model_img = numpy.zeros_like(img)
+    indx = (circ_r > model_radius[0]) & (circ_r < model_radius[-1])
+    model_img[indx] = interpolate.interp1d(model_radius, model_flux)(circ_r[indx])
+    # - Handle extrapolation
+    indx = circ_r <= model_radius[0]
+    if numpy.any(indx):
+        model_img[indx] = model_flux[0]
+    indx = circ_r >= model_radius[-1]
+    if numpy.any(indx):
+        model_img[indx] = model_flux[-1]
 
-    # Find the FWHM
-    halfmax = smooth_flux[peak_indx]/2
-    try:
-        left = interpolate.interp1d(smooth_flux[:peak_indx], radius[:peak_indx])(halfmax)
-    except:
-        left = 0.
-    right = interpolate.interp1d(smooth_flux[peak_indx:], radius[peak_indx:])(halfmax)
+    r_units, circ_r = contour.convert_radius(circ_r, pixelsize=pixelsize, distance=distance)
+    radius = contour.convert_radius(radius, pixelsize=pixelsize, distance=distance)[1]
+    model_radius = contour.convert_radius(model_radius, pixelsize=pixelsize, distance=distance)[1]
 
-    # Generate a "model image"
-    model = interpolate.interp1d(radius, smooth_flux)(circ_r)
 
     if plot_file is not None:
-        collimated_farfield_output_plot(img_file, img_nobg, model, _threshold, level, trace,
-                                        circ_p, radius, flux, smooth_flux, peak_indx,
-                                        left, right, snr_img=snr_img, r_units=r_units,
-                                        ring_box=ring_box, pixelsize=pixelsize, distance=distance,
-                                        ofile=None if plot_file == 'show' else plot_file)
+        fullcone_farfield_output_plot(img_file, img_nobg, model_img, _threshold, level, trace,
+                                      circ_p, radius, flux, model_radius, model_flux, model_img,
+                                      snr_img=snr_img, r_units=r_units, ring_box=ring_box,
+                                      pixelsize=pixelsize, distance=distance,
+                                      ofile=None if plot_file == 'show' else plot_file)
 
-    return radius[peak_indx], flux[peak_indx], right-left
+    return circ_r, img_nobg, radius, flux
 
 
-def collimated_farfield_output_plot(img_file, img, model, threshold, level, trace, circ_p, radius,
-                                    flux, smooth_flux, peak_indx, left, right, snr_img=False,
-                                    r_units='pix', ring_box=None, pixelsize=None, distance=None,
-                                    ofile=None):
+def fullcone_farfield_output_plot(img_file, img, model, threshold, level, trace, circ_p, radius,
+                                  flux, model_radius, model_flux, model_img, snr_img=False,
+                                  r_units='pix', ring_box=None, pixelsize=None, distance=None,
+                                  ofile=None):
     """
+    UPDATE
     Diagnostic plot for the measurements of a collimated far-field output beam.
 
     Args:
@@ -162,6 +212,11 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
             Name of the QA file to produce.  If ``'show'``, no file is produced,
             but the QA plot is displayed in a matplotlib window.
     """
+
+    growth = numpy.cumsum(flux)
+    growth /= growth[-1]
+    right = interpolate.interp1d(growth, radius)(0.9)
+
     xc, yc, rc = circ_p
     ny, nx = img.shape
     extent = [-0.5, nx-0.5, -0.5, ny-0.5]
@@ -184,9 +239,7 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
     image_lim = contour.growth_lim(numpy.append(img, model), 0.99, fac=1.2)
     snr_lim = contour.growth_lim(img/sig, 0.99, fac=1.2)
     resid_lim = contour.growth_lim(resid, 0.90, fac=1.0, midpoint=0.)
-    radius_lim = [0, 2*radius[peak_indx]]
-    if radius_lim[1] < right:
-        radius_lim[1] = 2*right
+    radius_lim = [0, 1.5*right]
 
     w,h = pyplot.figaspect(1)
     fig = pyplot.figure(figsize=(1.5*w,1.5*h))
@@ -258,22 +311,19 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
 
     ax.text(0.05, 0.9, 'Residual', ha='left', va='center', color='w', transform=ax.transAxes,
             bbox=dict(facecolor='k', alpha=0.3, edgecolor='none'))
- 
+
     # Flux vs radius
-    ax = fig.add_axes([0.08, 0.17, 0.90, 0.42])
+    ax = fig.add_axes([0.08, 0.17, 0.84, 0.42])
     ax.set_xlim(radius_lim)
     ax.minorticks_on()
     ax.tick_params(which='major', length=8, direction='in', top=True, right=True)
     ax.tick_params(which='minor', length=4, direction='in', top=True, right=True)
     ax.grid(True, which='major', color='0.8', zorder=0, linestyle='-')
 
-    ax.scatter(radius, flux, marker='.', s=10, lw=0, alpha=.5, color='k', zorder=3)
-    ax.plot(radius, smooth_flux, color='C3', zorder=4)
+    ax.scatter(radius, flux, marker='.', s=10, lw=0, alpha=0.2, color='k', zorder=3)
+    ax.plot(model_radius, model_flux, color='C3', zorder=4)
 
-    ax.axvline(left, color='C0', lw=2, alpha=0.6, zorder=5)
-    ax.axvline(right, color='C0', lw=2, alpha=0.6, zorder=5)
-
-    ax.axvline(radius[peak_indx], color='C1', lw=1, ls='--', zorder=6)
+    ax.axvline(right, color='C1', lw=1, ls='--', zorder=6)
 
     ax.text(0.5, -0.08, f'Radius [{r_units}]', ha='center', va='center', transform=ax.transAxes)
 
@@ -281,10 +331,19 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
             transform=ax.transAxes)
     ax.text(-0.05, -0.17, f'File: {img_file.name}', ha='left', va='center',
             transform=ax.transAxes)
-    ax.text(-0.05, -0.22, f'Ring radius: {radius[peak_indx]:.2f}', ha='left', va='center',
+    ax.text(-0.05, -0.22, f'EE90 radius: {right:.2f}', ha='left', va='center',
             transform=ax.transAxes)
-    ax.text(-0.05, -0.27, f'Ring FWHM: {right-left:.2f}', ha='left', va='center',
-            transform=ax.transAxes)
+#    ax.text(-0.05, -0.27, f'Ring FWHM: {right-left:.2f}', ha='left', va='center',
+#            transform=ax.transAxes)
+
+    axt = ax.twinx()
+    axt.set_xlim(radius_lim)
+    axt.spines['right'].set_color('0.3')
+    axt.tick_params(which='both', axis='y', direction='in', colors='0.3')
+    axt.yaxis.label.set_color('0.3')
+    axt.plot(radius, growth, color='0.3', lw=0.5, zorder=5)
+    #axt.grid(True, which='major', color='C0', zorder=0, linestyle=':')
+    axt.set_ylabel('Enclosed Energy')
 
     if ofile is None:
         pyplot.show()

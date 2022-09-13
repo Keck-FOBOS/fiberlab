@@ -142,7 +142,7 @@ class Ellipse:
 
 
 
-def get_bg(img, clip_iter=None, sigma_upper=5.):
+def get_bg(img, clip_iter=None, sigma_lower=100., sigma_upper=5.):
     """
     Measure the background in an image.
 
@@ -152,6 +152,9 @@ def get_bg(img, clip_iter=None, sigma_upper=5.):
         clip_iter (:obj:`int`, optional):
             Number of clipping iterations.  If None, no clipping is
             performed.
+        sigma_lower (:obj:`float`, optional):
+            Sigma level for clipping.  Clipping only removes negative outliers.
+            Ignored if clip_iter is None.
         sigma_upper (:obj:`float`, optional):
             Sigma level for clipping.  Clipping only removes positive
             outliers.  Ignored if clip_iter is None.
@@ -171,7 +174,7 @@ def get_bg(img, clip_iter=None, sigma_upper=5.):
 
     # Clip the high values of the image to get the background and
     # background error
-    clipped_img = sigma_clip(img, sigma_lower=100, sigma_upper=sigma_upper,
+    clipped_img = sigma_clip(img, sigma_lower=sigma_lower, sigma_upper=sigma_upper,
                              stdfunc=sigma_clip_stdfunc_mad, maxiters=clip_iter)
     bkg = numpy.ma.median(clipped_img)
     sig = stats.median_abs_deviation(clipped_img.compressed(), scale='normal')
@@ -224,15 +227,18 @@ class ContourError(Exception):
 
 
 # TODO: Allow to smooth the image before finding the contour
-def get_contour(img, threshold=None, bg=None, sig=None, clip_iter=10, sigma_upper=3.):
+def get_contour(img, threshold=None, bg=None, sig=None, clip_iter=10, sigma_lower=100.,
+                sigma_upper=3.):
 
     # Compute the background flux, the standard deviation in the
     # background, and the number of rejected pixels
     if sig is None:
         if bg is None:
-            bkg, sig, nrej = get_bg(img, clip_iter=clip_iter, sigma_upper=sigma_upper)
+            bkg, sig, nrej = get_bg(img, clip_iter=clip_iter, sigma_lower=sigma_lower,
+                                    sigma_upper=sigma_upper)
         else:
-            bkg, sig, nrej = get_bg(bg, clip_iter=clip_iter, sigma_upper=sigma_upper)
+            bkg, sig, nrej = get_bg(bg, clip_iter=clip_iter, sigma_lower=sigma_lower,
+                                    sigma_upper=sigma_upper)
     else:
         bkg = 0.
 
@@ -358,4 +364,49 @@ def rotate_y_ticks(ax, rotation, va):
         tick.set_rotation(rotation)
         tick.set_verticalalignment(va)
 
+
+def convert_radius(r, pixelsize=None, distance=None, inverse=False):
+    """
+    Convert radius coordinates from pixels to mm or degrees.
+
+    Args:
+        r (`numpy.ndarray`_):
+            Radius **in pixels** for the forward operation.  For the reverse
+            operation (see ``inverse``), the radius should be in degrees if both
+            ``pixelsize`` and ``distance`` are provided, or in mm if only
+            ``pixelsize`` is provided.
+        pixelsize (:obj:`float`, optional):
+            Size of the image pixels in mm.
+        distance (:obj:`float`, optional):
+            Distance from the fiber output to the detector in mm.
+        inverse (:obj:`bool`, optional):
+            Perform the inverse operation; i.e., convert radius coordinates from
+            mm or degrees to pixels.
+
+    Returns:
+        :obj:`tuple`: A string with the radius units and the updated radius
+        values converted to either mm in the detector plane or output angle in
+        degrees with respect to the fiber face normal vector.  For the reverse
+        (see ``inverse``) operation, the returned units should be pixels.
+    """
+    _r = r.copy()
+    if inverse:
+        if pixelsize is not None and distance is not None :
+            _r = distance * numpy.tan(numpy.radians(_r))
+            r_units = 'mm'
+        if pixelsize is not None :
+            _r /= pixelsize 
+            r_units = 'pix'
+        return r_units, _r
+
+    # Convert the radius from pixels to mm
+    r_units = 'pix'
+    if pixelsize is not None :
+        _r *= pixelsize 
+        r_units = 'mm'
+    # Convert the radius from mm to angle
+    if pixelsize is not None and distance is not None :
+        _r = numpy.degrees(numpy.arctan(_r/distance))
+        r_units = 'deg'
+    return r_units, _r
 
