@@ -353,3 +353,106 @@ def fullcone_farfield_output_plot(img_file, img, model, threshold, level, trace,
     pyplot.close(fig)
 
 
+def fullcone_throughput(inp_img, out_img, bkg_file=None, threshold=None, clip_iter=10,
+                        sigma_lower=100., sigma_upper=3., local_bg_fac=None, local_iter=1):
+    """
+    Analyze an output far-field image for a full-cone input beam.
+
+    Args:
+        inp_img (:obj:`str`, `Path`_):
+            Image of the input beam
+        out_img (:obj:`str`, `Path`_):
+            Image of the output beam
+        bkg_file (:obj:`str`, `Path`_, optional):
+            Background image to subtract
+        threshold (:obj:`float`, optional):
+            S/N threshold of the contour used to define the center of the ring.
+            If None, see :func:`default_threshold`.
+        clip_iter (:obj:`int`, optional):
+            Number of clipping iterations used to measure background
+        sigma_lower (:obj:`float`, optional):
+            Lower sigma rejection used to measure background
+        sigma_upper (:obj:`float`, optional):
+            Upper sigma rejection used to measure background
+        local_bg_fac (:obj:`float`, optional):
+            Number of HWHM at which to determine the local background
+            level.  If None, no local background is estimated.
+        local_iter (:obj:`int`, optional):
+            Number of iterations used for determining the local
+            background.  Ignored if ``local_bg_fac`` is None.
+    """
+    # Read in the image and do the basic background subtraction
+    inp_data = bench_image(inp_img)
+    out_data = bench_image(out_img)
+    if bkg_file is not None:
+        bkg = bench_image(bkg_file)
+        if inp_data.shape != bkg.shape:
+            raise ValueError('Image shape mismatch.')
+        inp_data -= bkg
+        out_data -= bkg
+
+    inp_radius, inp_ee = ee_curve(inp_data, threshold=threshold, clip_iter=clip_iter,
+                                  sigma_lower=sigma_lower, sigma_upper=sigma_upper,
+                                  local_iter=local_iter, local_bg_fac=local_bg_fac)
+    inp_hwhm = interpolate.interp1d(inp_ee/inp_ee[-1], inp_radius)([0.5])[0]
+    inp_flux = numpy.mean(inp_ee[inp_radius > 2*inp_hwhm])
+
+    out_radius, out_ee = ee_curve(out_data, threshold=threshold, clip_iter=clip_iter,
+                                  sigma_lower=sigma_lower, sigma_upper=sigma_upper,
+                                  local_iter=local_iter, local_bg_fac=local_bg_fac)
+
+    out_hwhm = interpolate.interp1d(out_ee/out_ee[-1], out_radius)([0.5])[0]
+    out_flux = numpy.mean(out_ee[out_radius > 2*out_hwhm])
+
+    return inp_flux, out_flux, out_flux/inp_flux
+
+
+def ee_curve(img, threshold=None, clip_iter=10, sigma_lower=100., sigma_upper=3.,
+             local_bg_fac=None, local_iter=1):
+
+    # Get the ee curve for the input image
+    _threshold = default_threshold() if threshold is None else threshold
+    level, trace, trace_sig, trace_bkg \
+            = contour.get_contour(img, threshold=_threshold, clip_iter=clip_iter,
+                                  sigma_lower=sigma_lower, sigma_upper=sigma_upper)
+    _img = img - trace_bkg
+    circ_p = contour.Circle(trace[:,0], trace[:,1]).fit()
+
+    # Use the coordinates to compute the radius of each pixel
+    ny, nx = _img.shape
+    x, y = numpy.meshgrid(numpy.arange(nx), numpy.arange(ny))
+    circ_r, circ_theta = contour.Circle.polar(x, y, circ_p)
+
+    # Construct 1D vectors with data sorted by radius:
+    srt = numpy.argsort(circ_r.ravel())
+    radius = circ_r.ravel()[srt]
+    #   - Flux
+    flux = img.ravel()[srt]
+    #   - Cumulative sum of the flux to get the EE (growth) curve
+    ee = numpy.cumsum(flux)
+
+    # Iteratively determine a local background, if requested
+    bg_r = None
+    local_bg = 0.
+    if local_bg_fac is not None:
+        for i in range(local_iter):
+            # Get the half-width of the EE curve
+            hwhm = interpolate.interp1d(ee/ee[-1], radius)([0.5])[0]
+            # Get the background in the selected regions
+            bg_r = local_bg_fac*hwhm
+            indx = radius > bg_r
+            _local_bg = contour.get_bg(flux[indx], clip_iter=clip_iter, sigma_lower=sigma_lower,
+                                       sigma_upper=sigma_upper)[0]
+            # Subtract it from the image and flux
+            _img -= _local_bg
+            flux -= _local_bg
+            # Recompute the EE curve
+            ee = numpy.cumsum(flux)
+            # Add it to the total
+            local_bg += _local_bg
+            print(f'local_bg: {local_bg}')
+
+    return radius, ee
+
+
+
