@@ -124,7 +124,7 @@ class ScriptBase:
         Provide the name of the script.  By default, this is the name of the
         module with "fobos" prepended.
         """
-        return f"fobos_{cls.__module__.split('.')[-1]}"
+        return f"fiberlab_{cls.__module__.split('.')[-1]}"
 
     @classmethod
     def parse_args(cls, options=None):

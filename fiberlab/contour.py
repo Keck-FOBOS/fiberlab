@@ -1,3 +1,6 @@
+"""
+.. include:: ../include/links.rst
+"""
 import numpy
 from scipy import stats, optimize, signal, interpolate
 from skimage import measure

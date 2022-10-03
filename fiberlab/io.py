@@ -1,5 +1,7 @@
 """
 General input/output methods.
+
+.. include:: ../include/links.rst
 """ 
 
 from pathlib import Path

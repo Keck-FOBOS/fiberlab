@@ -1,5 +1,7 @@
 """
 Module with methods used to analyze and plot full-cone test images.
+
+.. include:: ../include/links.rst
 """
 from IPython import embed
 
@@ -44,7 +46,7 @@ def fullcone_farfield_output(img_file, bkg_file=None, threshold=None, clip_iter=
             Size of the image pixels in mm.
         distance (:obj:`float`, optional):
             Distance from the fiber output to the detector in mm.
-        plot_file (:obj:`str`, `Path`_, optional_):
+        plot_file (:obj:`str`, `Path`_, optional):
             Name of the QA file to produce.  If ``'show'``, no file is produced,
             but the QA plot is displayed in a matplotlib window.
         snr_img (:obj:`bool`, optional):
@@ -208,7 +210,7 @@ def fullcone_farfield_output_plot(img_file, img, model, threshold, level, trace,
         ring_box (:obj:`float`, optional):
             Limit the plotted image regions to this times the best-fitting
             contour radius.  If None, the full image is shown.
-        ofile (:obj:`str`, `Path`_, optional_):
+        ofile (:obj:`str`, `Path`_, optional):
             Name of the QA file to produce.  If ``'show'``, no file is produced,
             but the QA plot is displayed in a matplotlib window.
     """
