@@ -22,7 +22,8 @@ def default_threshold():
 
 
 def fullcone_farfield_output(img_file, bkg_file=None, threshold=None, clip_iter=10,
-                             sigma_lower=100., sigma_upper=3., local_bg_fac=None, local_iter=1,
+#                             sigma_lower=100., sigma_upper=3., local_bg_fac=None, local_iter=1,
+                             sigma_lower=100., sigma_upper=3., local_bg_fac=3., local_iter=3,
                              pixelsize=None, distance=None, plot_file=None, snr_img=False,
                              ring_box=None):
     """
@@ -217,7 +218,10 @@ def fullcone_farfield_output_plot(img_file, img, model, threshold, level, trace,
 
     growth = numpy.cumsum(flux)
     growth /= growth[-1]
-    right = interpolate.interp1d(growth, radius)(0.9)
+#    right = interpolate.interp1d(growth, radius)(0.9)
+#    print(f'EE90: {right:.2f}')
+    right = interpolate.interp1d(growth, radius)(0.85)
+    print(f'EE85: {right:.2f}')
 
     xc, yc, rc = circ_p
     ny, nx = img.shape
