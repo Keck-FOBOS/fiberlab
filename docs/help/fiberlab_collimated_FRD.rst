@@ -2,7 +2,8 @@
 
     $ fiberlab_collimated_FRD -h
     usage: fiberlab_collimated_FRD [-h] [-p PIXELSIZE] [-s SEP] [-t THRESHOLD]
-                                   [-r RING_BOX] [-o OROOT] [-f FILES]
+                                   [-r RING_BOX] [-o OROOT] [-f FILES] [-q]
+                                   [--summary [SUMMARY]] [--na NA]
                                    root ofile
     
     Calculate results for a collimated FRD test.
@@ -38,4 +39,13 @@
                             omitted, which means the code will use the value
                             provided on the command line (or its default). (default:
                             None)
+      -q, --no_qa           Skip making the individual QA plots for each image.
+                            (default: True)
+      --summary [SUMMARY]   Produce a summary plot showing the ring width as a
+                            function of input angle/f-ratio. The argument given must
+                            be the name of the file for the output plot; if no
+                            argument is given, the plot is only shown on screen.
+                            (default: None)
+      --na NA               The numerical aperture of the fiber. Only used when
+                            producing the summary plot. (default: None)
     

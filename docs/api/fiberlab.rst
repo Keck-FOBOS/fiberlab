@@ -11,6 +11,7 @@ Submodules
    fiberlab.contour
    fiberlab.fullcone
    fiberlab.io
+   fiberlab.plot
    fiberlab.util
 
 Module contents
