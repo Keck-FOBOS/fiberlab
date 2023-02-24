@@ -39,6 +39,16 @@ class CollimatedFRD(scriptbase.ScriptBase):
                                  'last column with the thresholds can be omitted, which means '
                                  'the code will use the value provided on the command line (or '
                                  'its default).')
+        parser.add_argument('-q', '--no_qa', dest='qa', default=True, action='store_false',
+                            help='Skip making the individual QA plots for each image.')
+        parser.add_argument('--summary', nargs='?', const='', default=None,
+                            help='Produce a summary plot showing the ring width as a function of '
+                                 'input angle/f-ratio.  The argument given must be the name of '
+                                 'the file for the output plot; if no argument is given, the plot '
+                                 'is only shown on screen.')
+        parser.add_argument('--na', default=None, type=float,
+                            help='The numerical aperture of the fiber.  Only used when producing '
+                                 'the summary plot.')
         return parser
 
     @staticmethod
@@ -54,6 +64,7 @@ class CollimatedFRD(scriptbase.ScriptBase):
 
         from .. import collimated
         from .. import io
+        from .. import plot
 
         # Set the root path
         root = Path(args.root).resolve()
@@ -69,14 +80,14 @@ class CollimatedFRD(scriptbase.ScriptBase):
                 = io.gather_collimated_file_list(root, par=args.files, threshold=args.threshold)
 
         # Analyze the two baseline images
-        plot_file = oroot / f'{z0.with_suffix("").name}_qa.png'
+        plot_file = oroot / f'{z0.with_suffix("").name}_qa.png' if args.qa else None
         print(f'Analyzing {z0.name}')
         z0_rad, z0_peak, z0_fwhm \
                 = collimated.collimated_farfield_output(z0, bkg_file=z0_bg, threshold=z0_thresh,
                                                         pixelsize=args.pixelsize,
                                                         plot_file=plot_file,
                                                         ring_box=args.ring_box)
-        plot_file = oroot / f'{z1.with_suffix("").name}_qa.png'
+        plot_file = oroot / f'{z1.with_suffix("").name}_qa.png' if args.qa else None
         print(f'Analyzing {z1.name}')
         z1_rad, z1_peak, z1_fwhm \
                 = collimated.collimated_farfield_output(z1, bkg_file=z1_bg, threshold=z1_thresh,
@@ -107,7 +118,7 @@ class CollimatedFRD(scriptbase.ScriptBase):
             a_fwhm = numpy.zeros(nangle, dtype=float)
             for i in range(nangle):
                 print(f'Analyzing {afiles[i].name}')
-                plot_file = oroot / f'{afiles[i].with_suffix("").name}_qa.png'
+                plot_file = oroot / f'{afiles[i].with_suffix("").name}_qa.png' if args.qa else None
                 a_rad[i], a_peak[i], a_fwhm[i] \
                         = collimated.collimated_farfield_output(afiles[i], bkg_file=a_bg[i],
                                                                 threshold=a_thresh[i],
@@ -157,5 +168,15 @@ class CollimatedFRD(scriptbase.ScriptBase):
                 for i in range(nangle):
                     f.write(f'  {afiles[i].name:>15} {a_bg[i].name:>15} {a_thresh[i]:6.1f} '
                             f'{a_peak[i]:10.2e} {a_rad[i]:8.3f} {a_fwhm[i]:8.3f}\n')
+
+        if args.summary is not None:
+            nas = None if args.na is None else [args.na]
+            if len(args.summary) == 0:
+                summary_file = None
+            else:
+                summary_file = Path(args.summary).resolve()
+                if summary_file.parent != oroot:
+                    summary_file = oroot / summary_file.name
+            plot.frd_plot([_ofile], nas=nas, ofile=summary_file)
 
 
