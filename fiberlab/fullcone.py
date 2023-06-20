@@ -6,8 +6,10 @@ Module with methods used to analyze and plot full-cone test images.
 from IPython import embed
 
 import numpy
-from scipy import interpolate
+from scipy import interpolate, ndimage
 from matplotlib import pyplot, ticker
+
+from astropy.stats import sigma_clip
 
 from . import contour
 from .io import bench_image
@@ -413,27 +415,71 @@ def fullcone_throughput(inp_img, out_img, bkg_file=None, threshold=None, clip_it
     return inp_flux, out_flux, out_flux/inp_flux
 
 
-def ee_curve(img, threshold=None, clip_iter=10, sigma_lower=100., sigma_upper=3.,
-             local_bg_fac=None, local_iter=1):
+def ee_curve(img, mask=None, smooth=None, circ_p=None, threshold=None, clip_iter=10,
+             sigma_lower=100., sigma_upper=3., bkg_rej=None, local_bg_fac=None, local_iter=1):
 
-    # Get the ee curve for the input image
-    _threshold = default_threshold() if threshold is None else threshold
-    level, trace, trace_sig, trace_bkg \
-            = contour.get_contour(img, threshold=_threshold, clip_iter=clip_iter,
-                                  sigma_lower=sigma_lower, sigma_upper=sigma_upper)
-    _img = img - trace_bkg
-    circ_p = contour.Circle(trace[:,0], trace[:,1]).fit()
+    gpm = None if mask is None else numpy.logical_not(mask)
+
+    # Get the bounding contour of the image spot
+    if circ_p is None:
+        # Image should already have a nominal background subtracted
+        if smooth is None:
+            _img = img
+        else:
+            _img = img.copy()
+            if mask is not None:
+                _img[mask] = 0.
+            _img = ndimage.gaussian_filter(_img, sigma=3)
+
+        _threshold = default_threshold() if threshold is None else threshold
+        level, trace, trace_sig, trace_bkg \
+                = contour.get_contour(numpy.ma.MaskedArray(_img, mask=mask), threshold=_threshold,
+                                      clip_iter=clip_iter, sigma_lower=sigma_lower,
+                                      sigma_upper=sigma_upper)
+        # Fit a circle to the contour
+        circ_p = contour.Circle(trace[:,0], trace[:,1]).fit()
+    else:
+        trace_bkg = 0.
 
     # Use the coordinates to compute the radius of each pixel
-    ny, nx = _img.shape
+    ny, nx = img.shape
     x, y = numpy.meshgrid(numpy.arange(nx), numpy.arange(ny))
     circ_r, circ_theta = contour.Circle.polar(x, y, circ_p)
 
-    # Construct 1D vectors with data sorted by radius:
-    srt = numpy.argsort(circ_r.ravel())
-    radius = circ_r.ravel()[srt]
+    # Reject pixels at large radius outside of the main spot
+    if bkg_rej is not None:
+        if isinstance(bkg_rej, list):
+            indx = (circ_r > circ_p[2] * bkg_rej[0]) & (circ_r < circ_p[2] * bkg_rej[1])
+        else:
+            indx = circ_r > circ_p[2] * bkg_rej
+        if gpm is not None:
+            indx &= gpm
+        clipped = sigma_clip(img[indx] - trace_bkg, sigma=3.)
+        trace_bkg += numpy.ma.median(clipped)
+        if mask is None:
+            mask = numpy.zeros(img.shape, dtype=bool)
+            mask[indx] = numpy.ma.getmaskarray(clipped).copy()
+        else:
+            mask[indx] |= numpy.ma.getmaskarray(clipped)
+        gpm = numpy.logical_not(mask)
+        if isinstance(bkg_rej, list):
+            indx = gpm & (circ_r > circ_p[2] * bkg_rej[0])
+            clipped = sigma_clip(img[indx] - trace_bkg, sigma=3.)
+            mask[indx] |= numpy.ma.getmaskarray(clipped)
+            gpm = numpy.logical_not(mask)
+
+    if gpm is None:
+        circ_r = circ_r.ravel()
+        flux = img.ravel() - trace_bkg
+    else:
+        circ_r = circ_r[gpm].ravel()
+        flux = img[gpm].ravel() - trace_bkg
+
+    # Construct 1D vectors with the data sorted by radius:
+    srt = numpy.argsort(circ_r)
+    radius = circ_r[srt]
     #   - Flux
-    flux = img.ravel()[srt]
+    flux = flux[srt]
     #   - Cumulative sum of the flux to get the EE (growth) curve
     ee = numpy.cumsum(flux)
 
@@ -450,7 +496,6 @@ def ee_curve(img, threshold=None, clip_iter=10, sigma_lower=100., sigma_upper=3.
             _local_bg = contour.get_bg(flux[indx], clip_iter=clip_iter, sigma_lower=sigma_lower,
                                        sigma_upper=sigma_upper)[0]
             # Subtract it from the image and flux
-            _img -= _local_bg
             flux -= _local_bg
             # Recompute the EE curve
             ee = numpy.cumsum(flux)
@@ -458,7 +503,7 @@ def ee_curve(img, threshold=None, clip_iter=10, sigma_lower=100., sigma_upper=3.
             local_bg += _local_bg
             print(f'local_bg: {local_bg}')
 
-    return radius, ee
+    return radius, flux, ee, gpm, trace_bkg + local_bg, circ_p
 
 
 

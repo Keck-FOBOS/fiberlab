@@ -150,7 +150,7 @@ def get_bg(img, clip_iter=None, sigma_lower=100., sigma_upper=5.):
     Measure the background in an image.
 
     Args:
-        img (array):
+        img (`numpy.ndarray`_, `numpy.ma.MaskedArray`_):
             2D array with image data.
         clip_iter (:obj:`int`, optional):
             Number of clipping iterations.  If None, no clipping is
@@ -171,8 +171,9 @@ def get_bg(img, clip_iter=None, sigma_lower=100., sigma_upper=5.):
         # Assume the image has sufficient background pixels relative to
         # pixels with the fiber output image to find the background
         # using a simple median
-        bkg = numpy.median(img)
-        sig = stats.median_abs_deviation(img, axis=None, nan_policy='omit', scale='normal')
+        _img = img.compressed() if isinstance(img, numpy.ma.MaskedArray) else img
+        bkg = numpy.median(_img)
+        sig = stats.median_abs_deviation(_img, axis=None, nan_policy='omit', scale='normal')
         return bkg, sig, 0
 
     # Clip the high values of the image to get the background and
@@ -248,11 +249,13 @@ def get_contour(img, threshold=None, bg=None, sig=None, clip_iter=10, sigma_lowe
     # Find the contour matching the defined sigma threshold
     img_bksub = img - bkg
     if threshold is None:
-        threshold = 2 * numpy.std(img_bksub / sig)
+        threshold = 2 * numpy.ma.std(img_bksub / sig)
     level = threshold*sig
 
     # Transpose to match the numpy/matplotlib convention
-    contour = measure.find_contours(img_bksub.T, level=level)
+    _img_bksub = img_bksub.filled(0.0) if isinstance(img_bksub, numpy.ma.MaskedArray) \
+                    else img_bksub
+    contour = measure.find_contours(_img_bksub.T, level=level)
     if len(contour) == 0:
         raise ContourError('no contours found')
 
