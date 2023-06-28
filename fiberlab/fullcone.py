@@ -400,15 +400,15 @@ def fullcone_throughput(inp_img, out_img, bkg_file=None, threshold=None, clip_it
         inp_data -= bkg
         out_data -= bkg
 
-    inp_radius, inp_ee = ee_curve(inp_data, threshold=threshold, clip_iter=clip_iter,
-                                  sigma_lower=sigma_lower, sigma_upper=sigma_upper,
-                                  local_iter=local_iter, local_bg_fac=local_bg_fac)
+    inp_radius, _, inp_ee, _, _, _ \
+            = ee_curve(inp_data, threshold=threshold, clip_iter=clip_iter, sigma_lower=sigma_lower,
+                       sigma_upper=sigma_upper, local_iter=local_iter, local_bg_fac=local_bg_fac)
     inp_hwhm = interpolate.interp1d(inp_ee/inp_ee[-1], inp_radius)([0.5])[0]
     inp_flux = numpy.mean(inp_ee[inp_radius > 2*inp_hwhm])
 
-    out_radius, out_ee = ee_curve(out_data, threshold=threshold, clip_iter=clip_iter,
-                                  sigma_lower=sigma_lower, sigma_upper=sigma_upper,
-                                  local_iter=local_iter, local_bg_fac=local_bg_fac)
+    out_radius, _, out_ee, _, _, _ \
+            = ee_curve(out_data, threshold=threshold, clip_iter=clip_iter, sigma_lower=sigma_lower,
+                       sigma_upper=sigma_upper, local_iter=local_iter, local_bg_fac=local_bg_fac)
 
     out_hwhm = interpolate.interp1d(out_ee/out_ee[-1], out_radius)([0.5])[0]
     out_flux = numpy.mean(out_ee[out_radius > 2*out_hwhm])
