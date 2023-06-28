@@ -6,13 +6,16 @@ Module with methods used to analyze and plot full-cone test images.
 from IPython import embed
 
 import numpy
-from scipy import interpolate
+from scipy import interpolate, ndimage
 from matplotlib import pyplot, ticker
+
+from astropy.stats import sigma_clip
 
 from . import contour
 from .io import bench_image
 
 
+# TODO: Why is this a function?
 def default_threshold():
     """
     The default threshold to use for defining the contour used to determine the
@@ -397,15 +400,15 @@ def fullcone_throughput(inp_img, out_img, bkg_file=None, threshold=None, clip_it
         inp_data -= bkg
         out_data -= bkg
 
-    inp_radius, inp_ee = ee_curve(inp_data, threshold=threshold, clip_iter=clip_iter,
-                                  sigma_lower=sigma_lower, sigma_upper=sigma_upper,
-                                  local_iter=local_iter, local_bg_fac=local_bg_fac)
+    inp_radius, _, inp_ee, _, _, _ \
+            = ee_curve(inp_data, threshold=threshold, clip_iter=clip_iter, sigma_lower=sigma_lower,
+                       sigma_upper=sigma_upper, local_iter=local_iter, local_bg_fac=local_bg_fac)
     inp_hwhm = interpolate.interp1d(inp_ee/inp_ee[-1], inp_radius)([0.5])[0]
     inp_flux = numpy.mean(inp_ee[inp_radius > 2*inp_hwhm])
 
-    out_radius, out_ee = ee_curve(out_data, threshold=threshold, clip_iter=clip_iter,
-                                  sigma_lower=sigma_lower, sigma_upper=sigma_upper,
-                                  local_iter=local_iter, local_bg_fac=local_bg_fac)
+    out_radius, _, out_ee, _, _, _ \
+            = ee_curve(out_data, threshold=threshold, clip_iter=clip_iter, sigma_lower=sigma_lower,
+                       sigma_upper=sigma_upper, local_iter=local_iter, local_bg_fac=local_bg_fac)
 
     out_hwhm = interpolate.interp1d(out_ee/out_ee[-1], out_radius)([0.5])[0]
     out_flux = numpy.mean(out_ee[out_radius > 2*out_hwhm])
@@ -413,27 +416,128 @@ def fullcone_throughput(inp_img, out_img, bkg_file=None, threshold=None, clip_it
     return inp_flux, out_flux, out_flux/inp_flux
 
 
-def ee_curve(img, threshold=None, clip_iter=10, sigma_lower=100., sigma_upper=3.,
-             local_bg_fac=None, local_iter=1):
+def ee_curve(img, mask=None, circ_p=None, smooth=None, threshold=None, clip_iter=10,
+             sigma_lower=100., sigma_upper=3., bkg_rej=None, local_bg_fac=None, local_iter=1):
+    """
+    Construct an encircled energy curve provided an output image with a single
+    output beam.
 
-    # Get the ee curve for the input image
-    _threshold = default_threshold() if threshold is None else threshold
-    level, trace, trace_sig, trace_bkg \
-            = contour.get_contour(img, threshold=_threshold, clip_iter=clip_iter,
-                                  sigma_lower=sigma_lower, sigma_upper=sigma_upper)
-    _img = img - trace_bkg
-    circ_p = contour.Circle(trace[:,0], trace[:,1]).fit()
+    Args:
+        img (`numpy.ndarray`_):
+            Image data to analze.
+        mask (`numpy.ndarray`_, optional):
+            Boolean mask image (True=masked pixel).  Must be the same shape as
+            ``img``.  If None, all pixels in ``img`` are considered valid.
+        circ_p (`numpy.ndarray`_, optional):
+            Parameters of the circle used to define where the output beam is
+            located in the image.  Shape must be ``(3,)``, providing (1) the
+            center along the image 2nd axis (following the numpy convention of
+            this being the ``x`` coordinate), (2) the center along the 1st axis
+            (numpy ``y`` axis), and (3) a fiducial radius of the spot.  If None,
+            these parameters are determine by fitting an image contour.  If
+            provided, ``smooth`` and ``threshold`` are ignored.
+        smooth (:obj:`float`, optional):
+            When using an image contour to find the output beam center, first
+            smooth the image using a Gaussian kernel with this (circular) sigma.
+            If None, ``img`` is not smoothed before the contour is determined.
+        threshold (:obj:`float`, optional):
+            The threshold in units of image background standard deviation used
+            to set the contour level.  If None and ``circ_p`` is not provided,
+            the default value is set by :func:`default_threshold`.
+        clip_iter (:obj:`int`, optional):
+            Number of clipping iterations to perform when measuring the
+            background and standard deviation in the input image.  This is used
+            both when setting the image contour level to find the beam center,
+            and when adjusting the local image background.  If None, no clipping
+            iterations are performed.
+        sigma_lower (:obj:`float`, optional):
+            Sigma rejection used for measurements below the mean.  Must be
+            provided (or left at the default) if ``clip_iter`` is not None.
+        sigma_upper (:obj:`float`, optional):
+            Sigma rejection used for measurements above the mean.  Must be
+            provided (or left at the default) if ``clip_iter`` is not None.
+        bkg_rej (:obj:`float`, array-like, optional):
+            Perform a +/- 3-sigma rejection in a background region defined by
+            this object.  If a single value is provided, all pixels beyond the
+            multiple of the beam radius, defined by the last element of
+            ``circ_p``, is included in the rejection.  Instead, a list or numpy
+            array can be used to define an inner (first element) and outer (last
+            element) multiple for the radius.  If None, no additional background
+            region rejection is performed.
+        local_bg_fac (:obj:`float`, optional):
+            Iteratively measure and update a local background using all pixels
+            above this multiple of the EE50 radius from the previous iteration.
+            The background is measured using the same clipping iterations and
+            sigma as used when measuring the image contour used to find the beam
+            center (see ``clip_iter``, ``sigma_lower``, and ``sigma_upper``).
+            If None, no local background is measured and subtracted from the EE
+            curve.
+        local_iter (:obj:`float`, optional):
+            Number of iterations to perform for the local background
+            subtraction.
+    """
+    gpm = None if mask is None else numpy.logical_not(mask)
+
+    # Get the bounding contour of the image spot
+    if circ_p is None:
+        # Image should already have a nominal background subtracted
+        if smooth is None:
+            _img = img
+        else:
+            _img = img.copy()
+            if mask is not None:
+                _img[mask] = 0.
+            _img = ndimage.gaussian_filter(_img, sigma=smooth)
+
+        _threshold = default_threshold() if threshold is None else threshold
+        level, trace, trace_sig, trace_bkg \
+                = contour.get_contour(numpy.ma.MaskedArray(_img, mask=mask), threshold=_threshold,
+                                      clip_iter=clip_iter, sigma_lower=sigma_lower,
+                                      sigma_upper=sigma_upper)
+        # Fit a circle to the contour
+        circ_p = contour.Circle(trace[:,0], trace[:,1]).fit()
+    else:
+        trace_bkg = 0.
 
     # Use the coordinates to compute the radius of each pixel
-    ny, nx = _img.shape
+    ny, nx = img.shape
     x, y = numpy.meshgrid(numpy.arange(nx), numpy.arange(ny))
     circ_r, circ_theta = contour.Circle.polar(x, y, circ_p)
 
-    # Construct 1D vectors with data sorted by radius:
-    srt = numpy.argsort(circ_r.ravel())
-    radius = circ_r.ravel()[srt]
+    # Reject pixels at large radius outside of the main spot
+    if bkg_rej is not None:
+        if isinstance(bkg_rej, list):
+            indx = (circ_r > circ_p[2] * bkg_rej[0]) & (circ_r < circ_p[2] * bkg_rej[1])
+        else:
+            indx = circ_r > circ_p[2] * bkg_rej
+        if gpm is not None:
+            indx &= gpm
+        clipped = sigma_clip(img[indx] - trace_bkg, sigma=3.)
+        trace_bkg += numpy.ma.median(clipped)
+        if mask is None:
+            mask = numpy.zeros(img.shape, dtype=bool)
+            mask[indx] = numpy.ma.getmaskarray(clipped).copy()
+        else:
+            mask[indx] |= numpy.ma.getmaskarray(clipped)
+        gpm = numpy.logical_not(mask)
+        if isinstance(bkg_rej, list):
+            indx = gpm & (circ_r > circ_p[2] * bkg_rej[0])
+            clipped = sigma_clip(img[indx] - trace_bkg, sigma=3.)
+            mask[indx] |= numpy.ma.getmaskarray(clipped)
+            gpm = numpy.logical_not(mask)
+
+    if gpm is None:
+        circ_r = circ_r.ravel()
+        flux = img.ravel() - trace_bkg
+    else:
+        circ_r = circ_r[gpm].ravel()
+        flux = img[gpm].ravel() - trace_bkg
+
+    # Construct 1D vectors with the data sorted by radius:
+    srt = numpy.argsort(circ_r)
+    radius = circ_r[srt]
     #   - Flux
-    flux = img.ravel()[srt]
+    flux = flux[srt]
     #   - Cumulative sum of the flux to get the EE (growth) curve
     ee = numpy.cumsum(flux)
 
@@ -450,7 +554,6 @@ def ee_curve(img, threshold=None, clip_iter=10, sigma_lower=100., sigma_upper=3.
             _local_bg = contour.get_bg(flux[indx], clip_iter=clip_iter, sigma_lower=sigma_lower,
                                        sigma_upper=sigma_upper)[0]
             # Subtract it from the image and flux
-            _img -= _local_bg
             flux -= _local_bg
             # Recompute the EE curve
             ee = numpy.cumsum(flux)
@@ -458,7 +561,7 @@ def ee_curve(img, threshold=None, clip_iter=10, sigma_lower=100., sigma_upper=3.
             local_bg += _local_bg
             print(f'local_bg: {local_bg}')
 
-    return radius, ee
+    return radius, flux, ee, gpm, trace_bkg + local_bg, circ_p
 
 
 

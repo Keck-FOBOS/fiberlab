@@ -12,7 +12,7 @@ from skimage import io
 from astropy.io import fits
 
 
-def bench_image(ifile, ext=0):
+def bench_image(ifile, ext=0, compress=True):
     """
     Read an image from a bench imaging camera.
 
@@ -22,6 +22,10 @@ def bench_image(ifile, ext=0):
         ext (:obj:`int`, optional):
             If the file is a multi-extension fits file, this selects the
             extension with the relevant data.
+        compress (:obj:`bool`, optional):
+            If the data include multiple color channels (as indicated by the
+            image data array being 3D), compress into a single 2D image by
+            summing across the last dimension?
 
     Returns:
         `numpy.ndarray`_: Array with the (floating-point) image data.
@@ -35,7 +39,10 @@ def bench_image(ifile, ext=0):
 
     if any([s in ['.fit', '.fits'] for s in _ifile.suffixes]):
         return fits.open(_ifile)[ext].data.astype(float)
-    return io.imread(_ifile).astype(float)
+    img = io.imread(_ifile).astype(float)
+    if compress and img.ndim == 3:
+        img = numpy.sum(img, axis=2)
+    return img
 
 
 def gather_collimated_file_list(root, par=None, threshold=None):
