@@ -24,11 +24,9 @@ def default_threshold():
     return 3.0
 
 
-def fullcone_farfield_output(img_file, bkg_file=None, threshold=None, clip_iter=10,
-#                             sigma_lower=100., sigma_upper=3., local_bg_fac=None, local_iter=1,
-                             sigma_lower=100., sigma_upper=3., local_bg_fac=3., local_iter=3,
-                             pixelsize=None, distance=None, plot_file=None, snr_img=False,
-                             ring_box=None):
+# TODO: Change the name of this function to just 'farfield'?
+def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=None,
+                             plot_file=None, snr_img=False, window=None, **kwargs):
     """
     Analyze an output far-field image for a full-cone input beam.
 
@@ -37,15 +35,6 @@ def fullcone_farfield_output(img_file, bkg_file=None, threshold=None, clip_iter=
             Image file
         bkg_file (:obj:`str`, `Path`_, optional):
             Background image to subtract
-        threshold (:obj:`float`, optional):
-            S/N threshold of the contour used to define the center of the ring.
-            If None, see :func:`default_threshold`.
-        local_bg_fac (:obj:`float`, optional):
-            Number of HWHM at which to determine the local background
-            level.  If None, no local background is estimated.
-        local_iter (:obj:`int`, optional):
-            Number of iterations used for determining the local
-            background.  Ignored if ``local_bg_fac`` is None.
         pixelsize (:obj:`float`, optional):
             Size of the image pixels in mm.
         distance (:obj:`float`, optional):
@@ -56,10 +45,13 @@ def fullcone_farfield_output(img_file, bkg_file=None, threshold=None, clip_iter=
         snr_img (:obj:`bool`, optional):
             If creating the QA plot, plot the estimated S/N (used to set the
             contour level) instead of the measured counts.
-        ring_box (:obj:`float`, optional):
+        window (:obj:`float`, optional):
             Limit the plotted image regions to this times the best-fitting peak
             of the ring flux distribution.  If None, the full image is shown.
-    
+        **kwargs:
+            Parameters passed directly to :class:`EECurve` used to derive the
+            encircled-energy curve.
+
     Returns:
         :obj:`tuple`: Three floating-point objects providing the radius at which
         the peak flux is found, the flux at the peak, and the width of the ring.
@@ -74,99 +66,58 @@ def fullcone_farfield_output(img_file, bkg_file=None, threshold=None, clip_iter=
             raise ValueError('Image shape mismatch.')
         img_nobg = img - bkg
 
-    # Get the contour to use for finding the image center
-    _threshold = default_threshold() if threshold is None else threshold
-    level, trace, trace_sig, trace_bkg \
-            = contour.get_contour(img_nobg, threshold=_threshold, clip_iter=clip_iter,
-                                  sigma_lower=sigma_lower, sigma_upper=sigma_upper)
-    # Remove any residual background
-    img_nobg -= trace_bkg
-
-    # Fit a Circle to the contour and get its center coordinates
-    circ_p = contour.Circle(trace[:,0], trace[:,1]).fit()
-
-    # Use the coordinates to compute the radius of each pixel
-    ny, nx = img_nobg.shape
-    x, y = numpy.meshgrid(numpy.arange(nx), numpy.arange(ny))
-    circ_r, circ_theta = contour.Circle.polar(x, y, circ_p)
-
-    # Construct 1D vectors with data sorted by radius:
-    srt = numpy.argsort(circ_r.ravel())
-    radius = circ_r.ravel()[srt]
-    #   - Flux
-    flux = img_nobg.ravel()[srt]
-    #   - Aperture area
-    area = numpy.pi*radius**2
-    #   - Cumulative sum of the flux to get the EE (growth) curve
-    ee = numpy.cumsum(flux)
-
-    # Iteratively determine a local background, if requested
-    bg_r = None
-    local_bg = 0.
-    if local_bg_fac is not None:
-        for i in range(local_iter):
-            # Get the half-width of the EE curve
-            hwhm = interpolate.interp1d(ee/ee[-1], radius)([0.5])[0]
-            # Get the background in the selected regions
-            bg_r = local_bg_fac*hwhm
-            indx = radius > bg_r
-            _local_bg = contour.get_bg(flux[indx], clip_iter=clip_iter, sigma_lower=sigma_lower,
-                                       sigma_upper=sigma_upper)[0]
-            # Subtract it from the image and flux
-            img_nobg -= _local_bg
-            flux -= _local_bg
-            # Recompute the EE curve
-            ee = numpy.cumsum(flux)
-            # Add it to the total
-            local_bg += _local_bg
+    # Analyze the image
+    ee = EECurve(img_nobg, **kwargs)
 
     # Construct a model of the luminosity distribution using the EE
     # curve
     # - Sample the measured EE curve at discrete radii
-    model_radius = numpy.linspace(0,max(radius),500)[1:]
+    model_radius = numpy.linspace(0,max(ee.radius),500)[1:]
     model_ee = numpy.zeros_like(model_radius)
-    indx = (model_radius > numpy.amin(radius)) & (model_radius < numpy.amax(radius))
-    model_ee[indx] = interpolate.interp1d(radius, ee)(model_radius[indx])
+    indx = (model_radius > numpy.amin(ee.radius)) & (model_radius < numpy.amax(ee.radius))
+    model_ee[indx] = interpolate.interp1d(ee.radius, ee.ee)(model_radius[indx])
     # - Handle extrapolation
-    indx = (model_radius <= numpy.amin(radius))
+    indx = (model_radius <= numpy.amin(ee.radius))
     if any(indx):
-        model_ee[indx] = ee[0]
-    indx = (model_radius >= numpy.amax(radius))
+        model_ee[indx] = ee.ee[0]
+    indx = (model_radius >= numpy.amax(ee.radius))
     if any(indx):
-        model_ee[indx] = ee[-1]
+        model_ee[indx] = ee.ee[-1]
     # - Construct the model flux as the derivative of the EE curve
     model_flux = numpy.append(model_ee[0]/model_radius[0]**2,
                               numpy.diff(model_ee)/numpy.diff(model_radius**2)) / numpy.pi
     # - Interpolate the 1D model into a 2D image
     model_img = numpy.zeros_like(img)
-    indx = (circ_r > model_radius[0]) & (circ_r < model_radius[-1])
-    model_img[indx] = interpolate.interp1d(model_radius, model_flux)(circ_r[indx])
+    indx = (ee.circ_r > model_radius[0]) & (ee.circ_r < model_radius[-1])
+    model_img[indx] = interpolate.interp1d(model_radius, model_flux)(ee.circ_r[indx])
     # - Handle extrapolation
-    indx = circ_r <= model_radius[0]
+    indx = ee.circ_r <= model_radius[0]
     if numpy.any(indx):
         model_img[indx] = model_flux[0]
-    indx = circ_r >= model_radius[-1]
+    indx = ee.circ_r >= model_radius[-1]
     if numpy.any(indx):
         model_img[indx] = model_flux[-1]
 
-    r_units, circ_r = contour.convert_radius(circ_r, pixelsize=pixelsize, distance=distance)
-    radius = contour.convert_radius(radius, pixelsize=pixelsize, distance=distance)[1]
+    r_units, circ_r = contour.convert_radius(ee.circ_r, pixelsize=pixelsize, distance=distance)
+    radius = contour.convert_radius(ee.radius, pixelsize=pixelsize, distance=distance)[1]
     model_radius = contour.convert_radius(model_radius, pixelsize=pixelsize, distance=distance)[1]
 
-
     if plot_file is not None:
-        fullcone_farfield_output_plot(img_file, img_nobg, model_img, _threshold, level, trace,
-                                      circ_p, radius, flux, model_radius, model_flux, model_img,
-                                      snr_img=snr_img, r_units=r_units, ring_box=ring_box,
-                                      pixelsize=pixelsize, distance=distance,
+        fullcone_farfield_output_plot(img_file, ee.img, model_img,
+                                      ee.trace, ee.circ_p, radius, ee.flux, ee.ee/ee.ee_norm,
+                                      model_radius, model_flux, snr_img=snr_img,
+                                      img_sig=ee.level/ee.threshold,
+                                      bkg_lim=ee.bkg_lim, r_units=r_units,
+                                      window=window, pixelsize=pixelsize, distance=distance,
                                       ofile=None if plot_file == 'show' else plot_file)
 
-    return circ_r, img_nobg, radius, flux
+    return ee
 
 
-def fullcone_farfield_output_plot(img_file, img, model, threshold, level, trace, circ_p, radius,
-                                  flux, model_radius, model_flux, model_img, snr_img=False,
-                                  r_units='pix', ring_box=None, pixelsize=None, distance=None,
+def fullcone_farfield_output_plot(img_file, img, model, trace, circ_p, radius, flux,
+                                  ee, model_radius, model_flux, snr_img=False,
+                                  img_sig=None, bkg_lim=None,
+                                  r_units='pix', window=None, pixelsize=None, distance=None,
                                   ofile=None):
     """
     UPDATE
@@ -181,8 +132,6 @@ def fullcone_farfield_output_plot(img_file, img, model, threshold, level, trace,
             The model of the far-field image.
         threshold (:obj:`float`):
             S/N threshold of the contour used to define the center of the ring.
-        level (:obj:`float`):
-            The level in the image that corresponds to the S/N threshold.
         trace (`numpy.ndarray`_):
             The contour tracing the outside of the ring used to define the ring
             center.
@@ -209,9 +158,11 @@ def fullcone_farfield_output_plot(img_file, img, model, threshold, level, trace,
         snr_img (:obj:`bool`, optional):
             Plot the estimated S/N (used to set the contour level) instead of
             the measured counts.
+        level (:obj:`float`, optional):
+            The level in the image that corresponds to the S/N threshold.
         r_umits (:obj:`str`, optional):
             The units of the radius vector.
-        ring_box (:obj:`float`, optional):
+        window (:obj:`float`, optional):
             Limit the plotted image regions to this times the best-fitting
             contour radius.  If None, the full image is shown.
         ofile (:obj:`str`, `Path`_, optional):
@@ -219,36 +170,34 @@ def fullcone_farfield_output_plot(img_file, img, model, threshold, level, trace,
             but the QA plot is displayed in a matplotlib window.
     """
 
-    growth = numpy.cumsum(flux)
-    growth /= growth[-1]
-#    right = interpolate.interp1d(growth, radius)(0.9)
-#    print(f'EE90: {right:.2f}')
-    right = interpolate.interp1d(growth, radius)(0.85)
+    right = interpolate.interp1d(ee, radius)(0.85)
     print(f'EE85: {right:.2f}')
 
     xc, yc, rc = circ_p
+    rc *= pixelsize
     ny, nx = img.shape
     extent = [-0.5, nx-0.5, -0.5, ny-0.5]
-    if ring_box is None:
+    if window is None:
         aspect = ny/nx
         xlim = None
         ylim = None
     else:
-#        peak_r = contour.convert_radius(numpy.array([radius[peak_indx]]), pixelsize=pixelsize,
-#                                        distance=distance, inverse=True)[1][0] 
         peak_r = contour.convert_radius(numpy.array([right]), pixelsize=pixelsize,
                                         distance=distance, inverse=True)[1][0] 
-        xlim = [xc - ring_box*peak_r, xc + ring_box*peak_r]
-        ylim = [yc - ring_box*peak_r, yc + ring_box*peak_r]
+        xlim = [xc - window*peak_r, xc + window*peak_r]
+        ylim = [yc - window*peak_r, yc + window*peak_r]
         aspect = 1.
 
     resid = img - model
-    sig = level / threshold
 
     image_lim = contour.growth_lim(numpy.append(img, model), 0.99, fac=1.2)
-    snr_lim = contour.growth_lim(img/sig, 0.99, fac=1.2)
     resid_lim = contour.growth_lim(resid, 0.90, fac=1.0, midpoint=0.)
-    radius_lim = [0, 1.5*right]
+    rfac = 1.5 if window is None else window
+    if bkg_lim is not None:
+        rfac = max(bkg_lim[0], rfac)
+        if len(bkg_lim) == 2:
+            rfac = max(bkg_lim[1], rfac)
+    radius_lim = [0, rfac*rc]
 
     w,h = pyplot.figaspect(1)
     fig = pyplot.figure(figsize=(1.5*w,1.5*h))
@@ -271,6 +220,7 @@ def fullcone_farfield_output_plot(img_file, img, model, threshold, level, trace,
         ax.set_ylim(ylim)
 
     if snr_img:
+        snr_lim = contour.growth_lim(img/img_sig, 0.99, fac=1.2)
         imgplt = ax.imshow(img/sig, origin='lower', interpolation='nearest', cmap=cmap,
                            vmin=snr_lim[0], vmax=snr_lim[1], extent=extent)
     else:
@@ -333,6 +283,11 @@ def fullcone_farfield_output_plot(img_file, img, model, threshold, level, trace,
     ax.plot(model_radius, model_flux, color='C3', zorder=4)
 
     ax.axvline(right, color='C1', lw=1, ls='--', zorder=6)
+    ax.axvline(rc, color='C3', lw=1, ls='--', zorder=6)
+    if bkg_lim is not None:
+        ax.axvline(bkg_lim[0]*rc, color='0.5', lw=1, ls='--', zorder=6)
+        if len(bkg_lim) == 2:
+            ax.axvline(bkg_lim[1]*rc, color='0.5', lw=1, ls='--', zorder=6)
 
     ax.text(0.5, -0.08, f'Radius [{r_units}]', ha='center', va='center', transform=ax.transAxes)
 
@@ -342,17 +297,15 @@ def fullcone_farfield_output_plot(img_file, img, model, threshold, level, trace,
             transform=ax.transAxes)
     ax.text(-0.05, -0.22, f'EE90 radius: {right:.2f}', ha='left', va='center',
             transform=ax.transAxes)
-#    ax.text(-0.05, -0.27, f'Ring FWHM: {right-left:.2f}', ha='left', va='center',
-#            transform=ax.transAxes)
 
     axt = ax.twinx()
     axt.set_xlim(radius_lim)
     axt.spines['right'].set_color('0.3')
     axt.tick_params(which='both', axis='y', direction='in', colors='0.3')
     axt.yaxis.label.set_color('0.3')
-    axt.plot(radius, growth, color='0.3', lw=0.5, zorder=5)
-    #axt.grid(True, which='major', color='C0', zorder=0, linestyle=':')
+    axt.plot(radius, ee, color='0.3', lw=0.5, zorder=5)
     axt.set_ylabel('Enclosed Energy')
+    axt.axhline(1.0, color='0.5', lw=1, ls='--', zorder=6)
 
     if ofile is None:
         pyplot.show()
@@ -416,8 +369,20 @@ def fullcone_throughput(inp_img, out_img, bkg_file=None, threshold=None, clip_it
     return inp_flux, out_flux, out_flux/inp_flux
 
 
-def ee_curve(img, mask=None, circ_p=None, smooth=None, threshold=None, clip_iter=10,
-             sigma_lower=100., sigma_upper=3., bkg_rej=None, local_bg_fac=None, local_iter=1):
+# Removed for now:
+#        local_iter (:obj:`float`, optional):
+#            Iteratively measure and update a local background using the region
+#            defined by ``bkg_lim``.  The background is measured using the same
+#            clipping iterations and sigma as used when measuring the image
+#            contour used to find the beam center (see ``clip_iter``,
+#            ``sigma_lower``, and ``sigma_upper``).  If None, no local background
+#            is measured and subtracted from the EE curve.
+#
+#        local_iter_sig (:obj:`float`, optional):
+#            Number of iterations to perform for the local background
+#            subtraction.
+#                 , local_iter=None, local_iter_sig=3.):
+class EECurve:
     """
     Construct an encircled energy curve provided an output image with a single
     output beam.
@@ -447,121 +412,135 @@ def ee_curve(img, mask=None, circ_p=None, smooth=None, threshold=None, clip_iter
         clip_iter (:obj:`int`, optional):
             Number of clipping iterations to perform when measuring the
             background and standard deviation in the input image.  This is used
-            both when setting the image contour level to find the beam center,
-            and when adjusting the local image background.  If None, no clipping
-            iterations are performed.
+            only when setting the image contour level to find the beam center.
+            If None, no clipping iterations are performed.  The purpose of this
+            clipping is to remove most/all pixels with light from the spot.
         sigma_lower (:obj:`float`, optional):
             Sigma rejection used for measurements below the mean.  Must be
             provided (or left at the default) if ``clip_iter`` is not None.
+            Typically this number should be large: pixels at relatively low
+            values should be background pixels, where as pixels above the mean
+            have light from the output spot.
         sigma_upper (:obj:`float`, optional):
             Sigma rejection used for measurements above the mean.  Must be
             provided (or left at the default) if ``clip_iter`` is not None.
-        bkg_rej (:obj:`float`, array-like, optional):
-            Perform a +/- 3-sigma rejection in a background region defined by
+            Typically this number should be small: pixels at relatively low
+            values should be background pixels, where as pixels above the mean
+            have light from the output spot.
+        bkg_lim (:obj:`float`, array-like, optional):
+            Perform a +/- sigma rejection in a background region defined by
             this object.  If a single value is provided, all pixels beyond the
             multiple of the beam radius, defined by the last element of
             ``circ_p``, is included in the rejection.  Instead, a list or numpy
             array can be used to define an inner (first element) and outer (last
             element) multiple for the radius.  If None, no additional background
             region rejection is performed.
-        local_bg_fac (:obj:`float`, optional):
-            Iteratively measure and update a local background using all pixels
-            above this multiple of the EE50 radius from the previous iteration.
-            The background is measured using the same clipping iterations and
-            sigma as used when measuring the image contour used to find the beam
-            center (see ``clip_iter``, ``sigma_lower``, and ``sigma_upper``).
-            If None, no local background is measured and subtracted from the EE
-            curve.
-        local_iter (:obj:`float`, optional):
-            Number of iterations to perform for the local background
-            subtraction.
+        bkg_lim_sig (:obj:`float`, optional):
+            Number of sigma for the background rejection performed based on
+            ``bkg_lim``.
     """
-    gpm = None if mask is None else numpy.logical_not(mask)
+    def __init__(self, img, mask=None, circ_p=None, smooth=None, threshold=None, clip_iter=10,
+                 sigma_lower=100., sigma_upper=3., bkg_lim=None, bkg_lim_sig=3.):
 
-    # Get the bounding contour of the image spot
-    if circ_p is None:
-        # Image should already have a nominal background subtracted
-        if smooth is None:
-            _img = img
+        self.img = img.copy()
+        self.gpm = None if mask is None else numpy.logical_not(mask)
+
+        # Get the bounding contour of the image spot
+        if circ_p is None:
+            # Image should already have a nominal background subtracted
+            _img = self.img
+            if smooth is not None:
+                _img = self.img.copy()
+                if mask is not None:
+                    _img[mask] = 0.
+                _img = ndimage.gaussian_filter(_img, sigma=smooth)
+
+            self.threshold = default_threshold() if threshold is None else threshold
+            self.level, self.trace, self.trace_sig, self.bkg \
+                    = contour.get_contour(numpy.ma.MaskedArray(_img, mask=mask),
+                                          threshold=self.threshold, clip_iter=clip_iter,
+                                          sigma_lower=sigma_lower, sigma_upper=sigma_upper)
+            # Fit a circle to the contour
+            self.circ_p = contour.Circle(self.trace[:,0], self.trace[:,1]).fit()
+            self.img -= self.bkg
         else:
-            _img = img.copy()
-            if mask is not None:
-                _img[mask] = 0.
-            _img = ndimage.gaussian_filter(_img, sigma=smooth)
+            self.threshold = None
+            self.level = None
+            self.trace = None
+            self.trace_sig = None
+            self.bkg = 0.
+            self.circ_p = circ_p
 
-        _threshold = default_threshold() if threshold is None else threshold
-        level, trace, trace_sig, trace_bkg \
-                = contour.get_contour(numpy.ma.MaskedArray(_img, mask=mask), threshold=_threshold,
-                                      clip_iter=clip_iter, sigma_lower=sigma_lower,
-                                      sigma_upper=sigma_upper)
-        # Fit a circle to the contour
-        circ_p = contour.Circle(trace[:,0], trace[:,1]).fit()
-    else:
-        trace_bkg = 0.
+        # Use the coordinates to compute the radius of each pixel
+        ny, nx = self.img.shape
+        self.x, self.y = numpy.meshgrid(numpy.arange(nx), numpy.arange(ny))
+        self.circ_r, circ_theta = contour.Circle.polar(self.x, self.y, self.circ_p)
 
-    # Use the coordinates to compute the radius of each pixel
-    ny, nx = img.shape
-    x, y = numpy.meshgrid(numpy.arange(nx), numpy.arange(ny))
-    circ_r, circ_theta = contour.Circle.polar(x, y, circ_p)
+        # Reject pixels at large radius outside of the main spot and adjust the
+        # background
+        self.bkg_lim = bkg_lim
+        if self.bkg_lim is not None:
+            # Select the pixels in the background region
+            if isinstance(self.bkg_lim, list):
+                indx = (self.circ_r > self.circ_p[2] * self.bkg_lim[0]) \
+                            & (self.circ_r < self.circ_p[2] * self.bkg_lim[1])
+            else:
+                indx = self.circ_r > self.circ_p[2] * self.bkg_lim
+            if self.gpm is not None:
+                indx &= self.gpm
+            # Clip the pixel values
+            clipped = sigma_clip(self.img[indx], sigma=bkg_lim_sig)
+            # Get the adjusted background
+            bkg_adj = numpy.ma.median(clipped)
+            # Add it to the previous background determination
+            self.bkg += bkg_adj
+            # And subtract it from the image
+            self.img -= bkg_adj
+            # Add the clipped pixels to the mask
+            if mask is None:
+                mask = numpy.zeros(self.img.shape, dtype=bool)
+                mask[indx] = numpy.ma.getmaskarray(clipped).copy()
+            else:
+                mask[indx] |= numpy.ma.getmaskarray(clipped)
+            self.gpm = numpy.logical_not(mask)
 
-    # Reject pixels at large radius outside of the main spot
-    if bkg_rej is not None:
-        if isinstance(bkg_rej, list):
-            indx = (circ_r > circ_p[2] * bkg_rej[0]) & (circ_r < circ_p[2] * bkg_rej[1])
+            # Also mask pixels at *all* radii beyond the inner radius (but
+            # they're not included in the background).  This removes them from
+            # consideration in the EE curve, but excludes them from the
+            # background calculation.
+            if isinstance(self.bkg_lim, list):
+                indx = self.gpm & (self.circ_r > self.circ_p[2] * self.bkg_lim[0])
+                clipped = sigma_clip(self.img[indx], sigma=3.)
+                mask[indx] |= numpy.ma.getmaskarray(clipped)
+                self.gpm = numpy.logical_not(mask)
+
+        # Only select the unmasked pixels when constructing the EE curve
+        if self.gpm is None:
+            self.radius = self.circ_r.ravel()
+            self.flux = self.img.ravel()
         else:
-            indx = circ_r > circ_p[2] * bkg_rej
-        if gpm is not None:
-            indx &= gpm
-        clipped = sigma_clip(img[indx] - trace_bkg, sigma=3.)
-        trace_bkg += numpy.ma.median(clipped)
-        if mask is None:
-            mask = numpy.zeros(img.shape, dtype=bool)
-            mask[indx] = numpy.ma.getmaskarray(clipped).copy()
+            self.radius = self.circ_r[self.gpm].ravel()
+            self.flux = self.img[self.gpm].ravel()
+
+        # Construct 1D vectors with the data sorted by radius:
+        srt = numpy.argsort(self.radius)
+        self.radius = self.radius[srt]
+        #   - Flux
+        self.flux = self.flux[srt]
+        #   - Cumulative sum of the flux to get the EE (growth) curve
+        self.ee = numpy.cumsum(self.flux)
+        #   - Get the normalization
+        self.get_ee_norm()
+
+    def get_ee_norm(self):
+        if self.bkg_lim is None:
+            self.ee_norm = self.ee[-1]
+        elif isinstance(self.bkg_lim, list):
+            indx = (self.radius > self.bkg_lim[0]*self.circ_p[2]) \
+                        & (self.radius < self.bkg_lim[1]*self.circ_p[2])
+            self.ee_norm = numpy.median(self.ee[indx])
         else:
-            mask[indx] |= numpy.ma.getmaskarray(clipped)
-        gpm = numpy.logical_not(mask)
-        if isinstance(bkg_rej, list):
-            indx = gpm & (circ_r > circ_p[2] * bkg_rej[0])
-            clipped = sigma_clip(img[indx] - trace_bkg, sigma=3.)
-            mask[indx] |= numpy.ma.getmaskarray(clipped)
-            gpm = numpy.logical_not(mask)
-
-    if gpm is None:
-        circ_r = circ_r.ravel()
-        flux = img.ravel() - trace_bkg
-    else:
-        circ_r = circ_r[gpm].ravel()
-        flux = img[gpm].ravel() - trace_bkg
-
-    # Construct 1D vectors with the data sorted by radius:
-    srt = numpy.argsort(circ_r)
-    radius = circ_r[srt]
-    #   - Flux
-    flux = flux[srt]
-    #   - Cumulative sum of the flux to get the EE (growth) curve
-    ee = numpy.cumsum(flux)
-
-    # Iteratively determine a local background, if requested
-    bg_r = None
-    local_bg = 0.
-    if local_bg_fac is not None:
-        for i in range(local_iter):
-            # Get the half-width of the EE curve
-            hwhm = interpolate.interp1d(ee/ee[-1], radius)([0.5])[0]
-            # Get the background in the selected regions
-            bg_r = local_bg_fac*hwhm
-            indx = radius > bg_r
-            _local_bg = contour.get_bg(flux[indx], clip_iter=clip_iter, sigma_lower=sigma_lower,
-                                       sigma_upper=sigma_upper)[0]
-            # Subtract it from the image and flux
-            flux -= _local_bg
-            # Recompute the EE curve
-            ee = numpy.cumsum(flux)
-            # Add it to the total
-            local_bg += _local_bg
-            print(f'local_bg: {local_bg}')
-
-    return radius, flux, ee, gpm, trace_bkg + local_bg, circ_p
-
+            indx = self.radius > self.circ_p[2] * self.bkg_lim
+            self.ee_norm = numpy.median(self.ee[indx])
 
 
