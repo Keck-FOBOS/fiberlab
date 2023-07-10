@@ -65,6 +65,8 @@ class FullConeEEFRatio(scriptbase.ScriptBase):
                             help='Directory for output files')
         parser.add_argument('--skip_plots', default=False, action='store_true',
                             help='Only create the output data file and skip the plots.')
+        parser.add_argument('--box', default=None, type=int,
+                            help='Boxcar average the image before analyzing it')
         return parser
 
     @staticmethod
@@ -117,7 +119,8 @@ class FullConeEEFRatio(scriptbase.ScriptBase):
                                                   clip_iter=int(args.bkg_clip[0]),
                                                   sigma_lower=args.bkg_clip[1],
                                                   sigma_upper=args.bkg_clip[2],
-                                                  bkg_lim=args.bkg_lim, bkg_lim_sig=args.bkg_sig)
+                                                  bkg_lim=args.bkg_lim, bkg_lim_sig=args.bkg_sig,
+                                                  box=args.box)
 
         plot_file = None if args.skip_plots else oroot / f'{z1.with_suffix("").name}_qa.png'
         print(f'Analyzing {z1.name}')
@@ -127,7 +130,11 @@ class FullConeEEFRatio(scriptbase.ScriptBase):
                                                   clip_iter=int(args.bkg_clip[0]),
                                                   sigma_lower=args.bkg_clip[1],
                                                   sigma_upper=args.bkg_clip[2],
-                                                  bkg_lim=args.bkg_lim, bkg_lim_sig=args.bkg_sig)
+                                                  bkg_lim=args.bkg_lim, bkg_lim_sig=args.bkg_sig,
+                                                  box=args.box)
+        pixelsize = args.pixelsize
+        if args.box is not None:
+            pixelsize *= args.box
 
         # Get the distance by sampling the radius at which each EE curve meets a
         # given growth fraction
@@ -150,9 +157,9 @@ class FullConeEEFRatio(scriptbase.ScriptBase):
 #        print(z1_last, z1_ee.radius[z1_last]*args.pixelsize)
 
         ee_r_z0 = interpolate.interp1d(z0_ee_norm[:z0_last],
-                                       z0_ee.radius[:z0_last]*args.pixelsize)(ee_sample)
+                                       z0_ee.radius[:z0_last]*pixelsize)(ee_sample)
         ee_r_z1 = interpolate.interp1d(z1_ee_norm[:z1_last],
-                                       z1_ee.radius[:z1_last]*args.pixelsize)(ee_sample)
+                                       z1_ee.radius[:z1_last]*pixelsize)(ee_sample)
 
         z0_distance = args.sep/(ee_r_z1/ee_r_z0-1)
         z1_distance = args.sep/(1-ee_r_z0/ee_r_z1)
@@ -171,8 +178,12 @@ class FullConeEEFRatio(scriptbase.ScriptBase):
         results = 'Result from fobos_fullcone_ee_fratio script\n' \
                   f'Written: {time.strftime("%a %d %b %Y %H:%M:%S",time.localtime())}\n\n' \
                   f'Top-level directory: {root}\n\n' \
-                  f'Pixelsize: {args.pixelsize} mm\n\n' \
-                  f'Z0 Image:         {z0.name}\n'
+                  f'Pixelsize: {args.pixelsize} mm\n'
+        if args.box is None:
+            results += '\n'
+        else:
+            results += f'Boxcar: {args.box}\n\n'
+        results += f'Z0 Image:         {z0.name}\n'
         if z0_bg is not None:
             results += f'Z0 Background:    {z0_bg.name}\n'
         results += f'Z0 S/N Threshold: {z0_thresh:.1f}\n' \
