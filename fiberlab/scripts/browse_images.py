@@ -38,7 +38,7 @@ class BrowseImages(scriptbase.ScriptBase):
             raise FileNotFoundError(f'{root} is not a valid directory.')
 
         search_str = f'*{args.ext}' if args.search is None else f'*{args.search}*{args.ext}'
-        files = sorted(list(root.glob()))
+        files = sorted(list(root.glob(search_str)))
         for f in files:
             img = bench_image(f)
             mean = numpy.mean(img)
