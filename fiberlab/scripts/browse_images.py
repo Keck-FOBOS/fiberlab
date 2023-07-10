@@ -26,6 +26,11 @@ class BrowseImages(scriptbase.ScriptBase):
     @staticmethod
     def main(args):
 
+        from platform import system
+        if system() == 'Windows':
+            import matplotlib
+            matplotlib.use('qtagg')
+
         from pathlib import Path
         from IPython import embed
         import numpy
