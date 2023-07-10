@@ -53,6 +53,8 @@ class FullConeFarField(scriptbase.ScriptBase):
                                  'is shown.')
         parser.add_argument('--box', default=None, type=int,
                             help='Boxcar average the image before analyzing it')
+        parser.add_argument('-o', '--oroot', default=str(Path().resolve()), type=str,
+                            help='Directory for output files')
         return parser
 
     @staticmethod
@@ -77,13 +79,20 @@ class FullConeFarField(scriptbase.ScriptBase):
         if bkg_file is not None and not bkg_file.exists():
             raise FileNotFoundError(f'{bkg_file} does not exist!')
 
+        if args.oroot is None:
+            oroot = img_file.parent
+        else:
+            oroot = Path(args.oroot).resolve()
+        if not oroot.exists():
+            oroot.mkdir(parents=True)
+
         # Analyze the image
         if args.skip_plots:
             plot_file = None
         elif args.show:
             plot_file = 'show'
         else:
-            plot_file = img_file.parent / f'{img_file.with_suffix("").name}_qa.png'
+            plot_file = oroot / f'{img_file.with_suffix("").name}_qa.png'
         print(f'Analyzing {img_file.name}')
         z0_ee = fullcone.fullcone_farfield_output(img_file, bkg_file=bkg_file,
                                                   threshold=args.threshold,
