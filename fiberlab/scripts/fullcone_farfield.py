@@ -68,6 +68,7 @@ class FullConeFarField(scriptbase.ScriptBase):
         from scipy import interpolate
 
         from .. import fullcone
+        from .. import contour
 
         img_file = Path(args.img_file).resolve()
         if not img_file.exists():
