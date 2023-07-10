@@ -80,7 +80,7 @@ class FullConeFarField(scriptbase.ScriptBase):
         elif args.show:
             plot_file = 'show'
         else:
-            img_file.parent / f'{img_file.with_suffix("").name}_qa.png'
+            plot_file = img_file.parent / f'{img_file.with_suffix("").name}_qa.png'
         print(f'Analyzing {img_file.name}')
         z0_ee = fullcone.fullcone_farfield_output(img_file, bkg_file=bkg_file,
                                                   threshold=args.threshold,

@@ -221,7 +221,7 @@ def fullcone_farfield_output_plot(img_file, img, model, trace, circ_p, radius, f
 
     if snr_img:
         snr_lim = contour.growth_lim(img/img_sig, 0.99, fac=1.2)
-        imgplt = ax.imshow(img/sig, origin='lower', interpolation='nearest', cmap=cmap,
+        imgplt = ax.imshow(img/img_sig, origin='lower', interpolation='nearest', cmap=cmap,
                            vmin=snr_lim[0], vmax=snr_lim[1], extent=extent)
     else:
         imgplt = ax.imshow(img, origin='lower', interpolation='nearest', cmap=cmap,
