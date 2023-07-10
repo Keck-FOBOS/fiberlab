@@ -3,6 +3,8 @@ Miscellaneous package utilities.
 
 .. include:: ../include/links.rst
 """
+import numpy
+
 
 def all_subclasses(cls):
     """
@@ -25,8 +27,6 @@ def all_subclasses(cls):
     return set(cls.__subclasses__()).union(
             [s for c in cls.__subclasses__() for s in all_subclasses(c)])
 
-
-import numpy
 
 def boxcar_average(arr, boxcar):
     """
@@ -67,6 +67,7 @@ def boxcar_average(arr, boxcar):
     for axis, box in zip(range(arr.ndim), _boxcar):
         _arr = numpy.add.reduceat(_arr, numpy.arange(0, _arr.shape[axis], box), axis=axis)/box
     return _arr
+
 
 def boxcar_replicate(arr, boxcar):
     """

@@ -27,7 +27,7 @@ def default_threshold():
 
 # TODO: Change the name of this function to just 'farfield'?
 def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=None,
-                             plot_file=None, snr_img=False, window=None, **kwargs):
+                             plot_file=None, snr_img=False, window=None, box=None, **kwargs):
     """
     Analyze an output far-field image for a full-cone input beam.
 
@@ -37,7 +37,8 @@ def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=N
         bkg_file (:obj:`str`, `Path`_, optional):
             Background image to subtract
         pixelsize (:obj:`float`, optional):
-            Size of the image pixels in mm.
+            Size of the *native* image pixels in mm (i.e., before any boxcar
+            average; see ``box``).
         distance (:obj:`float`, optional):
             Distance from the fiber output to the detector in mm.
         plot_file (:obj:`str`, `Path`_, optional):
@@ -49,6 +50,9 @@ def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=N
         window (:obj:`float`, optional):
             Limit the plotted image regions to this times the best-fitting peak
             of the ring flux distribution.  If None, the full image is shown.
+        box (:obj:`int`, optional):
+            Boxcar average the image by this number of pixels.  If None, full
+            resolution of image is used.
         **kwargs:
             Parameters passed directly to :class:`EECurve` used to derive the
             encircled-energy curve.
@@ -59,49 +63,70 @@ def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=N
     """
     # Read in the image and do the basic background subtraction
     img = bench_image(img_file)
+    if box is not None:
+        img = util.boxcar_average(img, box)*box**2
     if bkg_file is None:
         img_nobg = img.copy()
     else:
         bkg = bench_image(bkg_file)
+        if box is not None:
+            bkg = util.boxcar_average(bkg, box)*box**2
         if img.shape != bkg.shape:
             raise ValueError('Image shape mismatch.')
         img_nobg = img - bkg
+    _pixelsize = pixelsize
+    if box is not None:
+        _pixelsize *= box
 
     # Analyze the image
     ee = EECurve(img_nobg, **kwargs)
 
-    # Construct a model of the luminosity distribution using the EE
-    # curve
-    # - Sample the measured EE curve at discrete radii
+    # Create a smoothed version of the flux
+    smooth_flux = contour.iterative_filter(ee.flux, 301, 2) #, clip_iter=10, sigma=5.)
+    # Create a down-sampled set of radii for the model
     model_radius = numpy.linspace(0,max(ee.radius),500)[1:]
-    model_ee = numpy.zeros_like(model_radius)
-    indx = (model_radius > numpy.amin(ee.radius)) & (model_radius < numpy.amax(ee.radius))
-    model_ee[indx] = interpolate.interp1d(ee.radius, ee.ee)(model_radius[indx])
-    # - Handle extrapolation
-    indx = (model_radius <= numpy.amin(ee.radius))
-    if any(indx):
-        model_ee[indx] = ee.ee[0]
-    indx = (model_radius >= numpy.amax(ee.radius))
-    if any(indx):
-        model_ee[indx] = ee.ee[-1]
-    # - Construct the model flux as the derivative of the EE curve
-    model_flux = numpy.append(model_ee[0]/model_radius[0]**2,
-                              numpy.diff(model_ee)/numpy.diff(model_radius**2)) / numpy.pi
-    # - Interpolate the 1D model into a 2D image
-    model_img = numpy.zeros_like(img)
-    indx = (ee.circ_r > model_radius[0]) & (ee.circ_r < model_radius[-1])
-    model_img[indx] = interpolate.interp1d(model_radius, model_flux)(ee.circ_r[indx])
-    # - Handle extrapolation
-    indx = ee.circ_r <= model_radius[0]
-    if numpy.any(indx):
-        model_img[indx] = model_flux[0]
-    indx = ee.circ_r >= model_radius[-1]
-    if numpy.any(indx):
-        model_img[indx] = model_flux[-1]
+    # Sample the smoothed flux to get the model flux
+    model_flux = interpolate.interp1d(ee.radius, smooth_flux,
+                                      fill_value='extrapolate')(model_radius)
+    # Sample the EE
+    model_ee = interpolate.interp1d(ee.radius, ee.ee, bounds_error=False,
+                                    fill_value=(ee.ee[0], ee.ee[-1]))(model_radius)
+    # Create the model image
+    model_img = interpolate.interp1d(model_radius, model_flux, bounds_error=False,
+                                     fill_value=(model_flux[0], model_flux[-1]))(ee.circ_r)
 
-    r_units, circ_r = contour.convert_radius(ee.circ_r, pixelsize=pixelsize, distance=distance)
-    radius = contour.convert_radius(ee.radius, pixelsize=pixelsize, distance=distance)[1]
-    model_radius = contour.convert_radius(model_radius, pixelsize=pixelsize, distance=distance)[1]
+#    # Construct a model of the luminosity distribution using the EE
+#    # curve
+#    # - Sample the measured EE curve at discrete radii
+#    model_radius = numpy.linspace(0,max(ee.radius),500)[1:]
+#    model_ee = numpy.zeros_like(model_radius)
+#    indx = (model_radius > numpy.amin(ee.radius)) & (model_radius < numpy.amax(ee.radius))
+#    model_ee[indx] = interpolate.interp1d(ee.radius, ee.ee)(model_radius[indx])
+#    # - Handle extrapolation
+#    indx = (model_radius <= numpy.amin(ee.radius))
+#    if any(indx):
+#        model_ee[indx] = ee.ee[0]
+#    indx = (model_radius >= numpy.amax(ee.radius))
+#    if any(indx):
+#        model_ee[indx] = ee.ee[-1]
+#    # - Construct the model flux as the derivative of the EE curve
+#    model_flux = numpy.append(model_ee[0]/model_radius[0]**2,
+#                              numpy.diff(model_ee)/numpy.diff(model_radius**2)) / numpy.pi
+#    # - Interpolate the 1D model into a 2D image
+#    model_img = numpy.zeros_like(img)
+#    indx = (ee.circ_r > model_radius[0]) & (ee.circ_r < model_radius[-1])
+#    model_img[indx] = interpolate.interp1d(model_radius, model_flux)(ee.circ_r[indx])
+#    # - Handle extrapolation
+#    indx = ee.circ_r <= model_radius[0]
+#    if numpy.any(indx):
+#        model_img[indx] = model_flux[0]
+#    indx = ee.circ_r >= model_radius[-1]
+#    if numpy.any(indx):
+#        model_img[indx] = model_flux[-1]
+
+    r_units, circ_r = contour.convert_radius(ee.circ_r, pixelsize=_pixelsize, distance=distance)
+    radius = contour.convert_radius(ee.radius, pixelsize=_pixelsize, distance=distance)[1]
+    model_radius = contour.convert_radius(model_radius, pixelsize=_pixelsize, distance=distance)[1]
 
     if plot_file is not None:
         fullcone_farfield_output_plot(img_file, ee.img, model_img,
@@ -109,7 +134,7 @@ def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=N
                                       model_radius, model_flux, snr_img=snr_img,
                                       img_sig=ee.level/ee.threshold,
                                       bkg_lim=ee.bkg_lim, r_units=r_units,
-                                      window=window, pixelsize=pixelsize, distance=distance,
+                                      window=window, pixelsize=_pixelsize, distance=distance,
                                       ofile=None if plot_file == 'show' else plot_file)
 
     return ee

@@ -51,6 +51,8 @@ class FullConeFarField(scriptbase.ScriptBase):
                             help='Limit the plotted image regions to this times the fiducial '
                                  'radius of the far-field spot. If None, the full image '
                                  'is shown.')
+        parser.add_argument('--box', default=None, type=int,
+                            help='Boxcar average the image before analyzing it')
         return parser
 
     @staticmethod
@@ -89,7 +91,8 @@ class FullConeFarField(scriptbase.ScriptBase):
                                                   clip_iter=int(args.bkg_clip[0]),
                                                   sigma_lower=args.bkg_clip[1],
                                                   sigma_upper=args.bkg_clip[2],
-                                                  bkg_lim=args.bkg_lim, bkg_lim_sig=args.bkg_sig)
+                                                  bkg_lim=args.bkg_lim, bkg_lim_sig=args.bkg_sig,
+                                                  box=args.box)
 
         z0_ee_norm = z0_ee.ee/z0_ee.ee_norm
         if args.smooth:
