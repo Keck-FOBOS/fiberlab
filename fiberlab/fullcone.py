@@ -13,6 +13,7 @@ from astropy.stats import sigma_clip
 
 from . import contour
 from .io import bench_image
+from . import util
 
 
 # TODO: Why is this a function?

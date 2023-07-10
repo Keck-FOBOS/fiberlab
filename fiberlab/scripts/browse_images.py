@@ -17,6 +17,8 @@ class BrowseImages(scriptbase.ScriptBase):
         parser = super().get_parser(description='Browse images in a directory', width=width)
         parser.add_argument('root', default=str(Path().resolve()), type=str,
                             help='Directory with output files.')
+        parser.add_argument('-s', '--search', default=None, type=str,
+                            help='Search string for image names')
         parser.add_argument('-e', '--ext', default='.fit', type=str,
                             help='Image extension')
         return parser
@@ -35,7 +37,8 @@ class BrowseImages(scriptbase.ScriptBase):
         if not root.exists():
             raise FileNotFoundError(f'{root} is not a valid directory.')
 
-        files = sorted(list(root.glob(f'*{args.ext}')))
+        search_str = f'*{args.ext}' if args.search is None else f'*{args.search}*{args.ext}'
+        files = sorted(list(root.glob()))
         for f in files:
             img = bench_image(f)
             mean = numpy.mean(img)
