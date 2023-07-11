@@ -3,6 +3,8 @@ Module with methods used to analyze and plot full-cone test images.
 
 .. include:: ../include/links.rst
 """
+import warnings
+
 from IPython import embed
 
 import numpy
@@ -81,20 +83,20 @@ def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=N
     # Analyze the image
     ee = EECurve(img_nobg, **kwargs)
 
-    # Create a smoothed version of the flux
-    smooth_flux = contour.iterative_filter(ee.flux, 301, 2) #, clip_iter=10, sigma=5.)
-    # Create a down-sampled set of radii for the model
-    model_radius = numpy.linspace(0,max(ee.radius),500)[1:]
-    # Sample the smoothed flux to get the model flux
-    model_flux = interpolate.interp1d(ee.radius, smooth_flux,
-                                      fill_value='extrapolate')(model_radius)
-    # Sample the EE
-    model_ee = interpolate.interp1d(ee.radius, ee.ee, bounds_error=False,
-                                    fill_value=(ee.ee[0], ee.ee[-1]))(model_radius)
-    # Create the model image
-    model_img = interpolate.interp1d(model_radius, model_flux, bounds_error=False,
-                                     fill_value=(model_flux[0], model_flux[-1]))(ee.circ_r)
-
+#    # Create a smoothed version of the flux
+#    smooth_flux = contour.iterative_filter(ee.flux, 301, 2) #, clip_iter=10, sigma=5.)
+#    # Create a down-sampled set of radii for the model
+#    model_radius = numpy.linspace(0,max(ee.radius),500)[1:]
+#    # Sample the smoothed flux to get the model flux
+#    model_flux = interpolate.interp1d(ee.radius, smooth_flux,
+#                                      fill_value='extrapolate')(model_radius)
+#    # Sample the EE
+#    model_ee = interpolate.interp1d(ee.radius, ee.ee, bounds_error=False,
+#                                    fill_value=(ee.ee[0], ee.ee[-1]))(model_radius)
+#    # Create the model image
+#    model_img = interpolate.interp1d(model_radius, model_flux, bounds_error=False,
+#                                     fill_value=(model_flux[0], model_flux[-1]))(ee.circ_r)
+#
 #    # Construct a model of the luminosity distribution using the EE
 #    # curve
 #    # - Sample the measured EE curve at discrete radii
@@ -126,12 +128,13 @@ def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=N
 
     r_units, circ_r = contour.convert_radius(ee.circ_r, pixelsize=_pixelsize, distance=distance)
     radius = contour.convert_radius(ee.radius, pixelsize=_pixelsize, distance=distance)[1]
-    model_radius = contour.convert_radius(model_radius, pixelsize=_pixelsize, distance=distance)[1]
+    model_radius = contour.convert_radius(ee.model_radius, pixelsize=_pixelsize,
+                                          distance=distance)[1]
 
     if plot_file is not None:
-        fullcone_farfield_output_plot(img_file, ee.img, model_img,
+        fullcone_farfield_output_plot(img_file, ee.img, ee.model_img,
                                       ee.trace, ee.circ_p, radius, ee.flux, ee.ee/ee.ee_norm,
-                                      model_radius, model_flux, snr_img=snr_img,
+                                      ee.model_radius, ee.model_flux, snr_img=snr_img,
                                       img_sig=ee.level/ee.threshold,
                                       bkg_lim=ee.bkg_lim, r_units=r_units,
                                       window=window, pixelsize=_pixelsize, distance=distance,
@@ -557,6 +560,8 @@ class EECurve:
         self.ee = numpy.cumsum(self.flux)
         #   - Get the normalization
         self.get_ee_norm()
+        #   - Build model
+        self.build_model()
 
     def get_ee_norm(self):
         if self.bkg_lim is None:
@@ -568,5 +573,117 @@ class EECurve:
         else:
             indx = self.radius > self.circ_p[2] * self.bkg_lim
             self.ee_norm = numpy.median(self.ee[indx])
+
+    def build_model(self):
+        # Create a smoothed version of the flux
+        self.smooth_flux = contour.iterative_filter(self.flux, 301, 2) #, clip_iter=10, sigma=5.)
+        # Create a down-sampled set of radii for the model
+        self.model_radius = numpy.linspace(0,max(self.radius),500)[1:]
+        # Sample the smoothed flux to get the model flux
+        self.model_flux = interpolate.interp1d(self.radius, self.smooth_flux,
+                                               fill_value='extrapolate')(self.model_radius)
+        # Sample the EE
+        self.model_ee \
+                = interpolate.interp1d(self.radius, self.ee, bounds_error=False,
+                                       fill_value=(self.ee[0], self.ee[-1]))(self.model_radius)
+        # Create the model image
+        self.model_img = interpolate.interp1d(self.model_radius, self.model_flux,
+                                bounds_error=False,
+                                fill_value=(self.model_flux[0], self.model_flux[-1]))(self.circ_r)
+
+
+def calculate_fratio(z0_radius, z0_ee, z1_radius, z1_ee, sep, smooth=False, z0_bkg_lim=None,
+                     z1_bkg_lim=None):
+    """
+    Given the normalized EE curves from two images separated by a known
+    distance, calculate the distance from each image to the origin of the output
+    beam and the beam focal ratio.
+
+    Image z0 is taken closer to the output beam, and image z1 is taken further away.
+
+    Args:
+        z0_radius (`numpy.ndarray`_):
+            Radius in mm from the center of the spot in image z0.
+        z0_ee (`numpy.ndarray`_):
+            Normalized encircled energy for the spot in image z0.
+        z1_radius (`numpy.ndarray`_):
+            Radius in mm from the center of the spot in image z1.
+        z1_ee (`numpy.ndarray`_):
+            Normalized encircled energy for the spot in image z1.
+        sep (:obj:`float`):
+            Separation between the two images in mm along the output axis.
+        smooth (:obj:`bool`, optional):
+            Smooth the raw data before interpolating the radius at a fixed set
+            of EE values.
+        z0_bkg_lim (:obj:`float`, optional):
+            Radius in mm from the center of the spot at which the background
+            flux was determined in image z0.
+        z1_bkg_lim (:obj:`float`, optional):
+            Radius in mm from the center of the spot at which the background
+            flux was determined in image z1.
+
+    Returns:
+        :obj:`tuple`: A set of ten objects: (1) the EE samples, (2-3) the radii
+        at which the spot reaches the sampled EE for z0 and z1, respectively,
+        (4-5) the distances between the origin of the output beam and the image
+        as measured at each EE sample for z0 and z1, respectively, (6-7) the
+        "median" distance estimate using 0.2 < EE < 0.9 for image z0 and z1,
+        respectively, (8-9) the focal ratios calculated using the median
+        distances and the measured radii for image z0 and z1, respectively, and
+        (10) a boolean indicating if the calculation was successful.
+    """
+    # Smooth the EE curves, if requested
+    _z0_ee = contour.iterative_filter(z0_ee, 301, 2) if smooth else z0_ee
+    _z1_ee = contour.iterative_filter(z1_ee, 301, 2) if smooth else z1_ee
+
+    # Find the index of the last value where the normalized EE is still
+    # increasing
+    z0_last = numpy.where(numpy.diff(_z0_ee) < 0)[0][0]
+    z1_last = numpy.where(numpy.diff(_z1_ee) < 0)[0][0]
+
+    # Force the last index to be at a radius less than the beginning of the
+    # background region
+    if z0_bkg_lim is not None:
+        z0_last = min(z0_last, numpy.where(z0_radius > z0_bkg_lim)[0][0])
+    if z1_bkg_lim is not None:
+        z1_last = min(z1_last, numpy.where(z1_radius > z1_bkg_lim)[0][0])
+
+    # Get a uniform set of EE samples from 1% to 99%
+    ee_sample = numpy.linspace(0.01, 0.99, 99)
+    empty = numpy.full(ee_sample.size, -1, dtype=float)
+    success = True
+    try:
+        ee_r_z0 = interpolate.interp1d(_z0_ee[:z0_last], z0_radius[:z0_last])(ee_sample)
+    except:
+        warnings.warn('Error interpolating raw EE data for z0 image.')
+        success = False
+        ee_r_z0 = empty
+
+    try:
+        ee_r_z1 = interpolate.interp1d(_z1_ee[:z1_last], z1_radius[:z1_last])(ee_sample)
+    except:
+        warnings.warn('Error interpolating raw EE data for z1 image.')
+        success = False
+        ee_r_z1 = empty
+
+    if not success:
+        return ee_sample, ee_r_z0, ee_r_z1, empty, empty, -1., -1., empty, empty, success
+
+    # Calculate the distance for all samples
+    z0_distance = sep/(ee_r_z1/ee_r_z0-1)
+    z1_distance = sep/(1-ee_r_z0/ee_r_z1)
+
+    # Use the median ratio of the radii over EE values from 0.2 to 0.9 to
+    # calculate a "median" distance
+    indx = (ee_sample >= 0.2) & (ee_sample <= 0.9)
+    med_z0_distance = sep/(numpy.median(ee_r_z1[indx]/ee_r_z0[indx])-1)
+    med_z1_distance = sep/(1-numpy.median(ee_r_z0[indx]/ee_r_z1[indx]))
+
+    # Use the median distance to calculate the f/#
+    ee_fratio_z0 = med_z0_distance / 2 / ee_r_z0
+    ee_fratio_z1 = med_z1_distance / 2 / ee_r_z1
+
+    return ee_sample, ee_r_z0, ee_r_z1, z0_distance, z1_distance, \
+            med_z0_distance, med_z1_distance, ee_fratio_z0, ee_fratio_z1, success
 
 

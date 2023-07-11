@@ -94,7 +94,7 @@ class FullConeFarField(scriptbase.ScriptBase):
         else:
             plot_file = oroot / f'{img_file.with_suffix("").name}_qa.png'
         print(f'Analyzing {img_file.name}')
-        z0_ee = fullcone.fullcone_farfield_output(img_file, bkg_file=bkg_file,
+        ee = fullcone.fullcone_farfield_output(img_file, bkg_file=bkg_file,
                                                   threshold=args.threshold,
                                                   pixelsize=args.pixelsize, plot_file=plot_file,
                                                   window=args.window, snr_img=args.snr_img, 
@@ -104,28 +104,56 @@ class FullConeFarField(scriptbase.ScriptBase):
                                                   bkg_lim=args.bkg_lim, bkg_lim_sig=args.bkg_sig,
                                                   box=args.box)
 
-        z0_ee_norm = z0_ee.ee/z0_ee.ee_norm
+        # Raw values
+        normalized_ee = ee.ee/ee.ee_norm
         if args.smooth:
-            z0_ee_norm = contour.iterative_filter(z0_ee_norm, 301, 2)
-
-        z0_last = numpy.where(numpy.diff(z0_ee_norm) < 0)[0][0]
+            normalized_ee = contour.iterative_filter(normalized_ee, 301, 2)
+        last = numpy.where(numpy.diff(normalized_ee) < 0)[0][0]
         if args.bkg_lim is not None:
-            z0_last = min(z0_last, numpy.where(z0_ee.radius > args.bkg_lim[0]*z0_ee.circ_p[2])[0][0])
-#        print(z0_last, z0_ee.radius[z0_last]*args.pixelsize)
+            last = min(last, numpy.where(ee.radius > args.bkg_lim[0]*ee.circ_p[2])[0][0])
 
-        ee90 = interpolate.interp1d(z0_ee_norm[:z0_last],
-                                    z0_ee.radius[:z0_last]*args.pixelsize)(0.9)
-        fratio90 = None if args.distance is None else args.distance / 2 / ee90
+        # "Model" values
+        normalized_model_ee = ee.model_ee/ee.ee_norm
+        model_last = numpy.where(numpy.diff(normalized_model_ee) < 0)[0][0]
+        if args.bkg_lim is not None:
+            model_last = min(model_last,
+                             numpy.where(ee.model_radius > args.bkg_lim[0]*ee.circ_p[2])[0][0])
+
+        _pixelsize = args.pixelsize
+        if args.box is not None:
+            _pixelsize *= args.box
+
+        try:
+            ee90 = interpolate.interp1d(normalized_ee[:last],
+                                        ee.radius[:last]*_pixelsize)(0.9)
+        except:
+            warnings.warn('Error interpolated raw EE data.')
+            ee90 = None
+            fratio90 = None
+        else:
+            fratio90 = None if args.distance is None else args.distance / 2 / ee90
+
+        try:
+            model_ee90 = interpolate.interp1d(normalized_model_ee[:model_last],
+                                              ee.model_radius[:model_last]*_pixelsize)(0.9)
+        except:
+            warnings.warn('Error interpolated raw EE data.')
+            model_ee90 = None
+        else:
+            model_fratio90 = None if args.distance is None else args.distance / 2 / model_ee90
 
         print('# Result from fullcone_farfield script')
         print(f'# Written: {time.strftime("%a %d %b %Y %H:%M:%S",time.localtime())}')
         print(f'# Image file: {img_file.name}')
         print(f'# Pixelsize: {args.pixelsize} mm')
-        print(f'# Total Flux: {z0_ee.ee_norm:.2f}')
-        print(f'# EE90: {ee90:.2f}')
+        print(f'# Total Flux: {ee.ee_norm:.2f}')
+        print('# EE90: ' + ('Error' if ee90 is None else f'{ee90:.2f}'))
+        print('# Model EE90: ' + ('Error' if model_ee90 is None else f'{model_ee90:.2f}'))
         if args.distance is not None:
             print(f'# Distance from fiber output to image: {args.distance:.2f} mm')
-            print(f'# f/# at EE90: {fratio90:.2f}')
+            print('# f/# at EE90: ' + ('Error' if fratio90 is None else f'{fratio90:.2f}'))
+            print('# Model of f/# at EE90: '
+                  + ('Error' if model_fratio90 is None else f'{model_fratio90:.2f}'))
 
 
 

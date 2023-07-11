@@ -136,39 +136,31 @@ class FullConeEEFRatio(scriptbase.ScriptBase):
         if args.box is not None:
             pixelsize *= args.box
 
-        # Get the distance by sampling the radius at which each EE curve meets a
-        # given growth fraction
-        ee_sample = numpy.linspace(0.01, 0.99, 99)
+        # Use the raw data to do the distance and focal ratio calculation
+        ee_sample, ee_r_z0, ee_r_z1, z0_distance, z1_distance, \
+            med_z0_distance, med_z1_distance, ee_fratio_z0, ee_fratio_z1, success \
+                = fullcone.calculate_fratio(z0_ee.radius*pixelsize, z0_ee.ee/z0_ee.ee_norm,
+                                            z1_ee.radius*pixelsize, z1_ee.ee/z1_ee.ee_norm,
+                                            args.sep, smooth=args.smooth,
+                                            z0_bkg_lim=None if args.bkg_lim is None 
+                                                else args.bkg_lim[0]*z0_ee.circ_p[2]*pixelsize,
+                                            z1_bkg_lim=None if args.bkg_lim is None 
+                                                else args.bkg_lim[0]*z1_ee.circ_p[2]*pixelsize)
 
-        indx = (ee_sample >= 0.2) & (ee_sample <= 0.9)
-
-        z0_ee_norm = z0_ee.ee/z0_ee.ee_norm
-        z1_ee_norm = z1_ee.ee/z1_ee.ee_norm
-        if args.smooth:
-            z0_ee_norm = contour.iterative_filter(z0_ee_norm, 301, 2)
-            z1_ee_norm = contour.iterative_filter(z1_ee_norm, 301, 2)
-
-        z0_last = numpy.where(numpy.diff(z0_ee_norm) < 0)[0][0]
-        z1_last = numpy.where(numpy.diff(z1_ee_norm) < 0)[0][0]
-        if args.bkg_lim is not None:
-            z0_last = min(z0_last, numpy.where(z0_ee.radius > args.bkg_lim[0]*z0_ee.circ_p[2])[0][0])
-            z1_last = min(z1_last, numpy.where(z1_ee.radius > args.bkg_lim[0]*z0_ee.circ_p[2])[0][0])
-#        print(z0_last, z0_ee.radius[z0_last]*args.pixelsize)
-#        print(z1_last, z1_ee.radius[z1_last]*args.pixelsize)
-
-        ee_r_z0 = interpolate.interp1d(z0_ee_norm[:z0_last],
-                                       z0_ee.radius[:z0_last]*pixelsize)(ee_sample)
-        ee_r_z1 = interpolate.interp1d(z1_ee_norm[:z1_last],
-                                       z1_ee.radius[:z1_last]*pixelsize)(ee_sample)
-
-        z0_distance = args.sep/(ee_r_z1/ee_r_z0-1)
-        z1_distance = args.sep/(1-ee_r_z0/ee_r_z1)
-
-        med_z0_distance = args.sep/(numpy.median(ee_r_z1[indx]/ee_r_z0[indx])-1)
-        med_z1_distance = args.sep/(1-numpy.median(ee_r_z0[indx]/ee_r_z1[indx]))
-
-        ee_fratio_1 = med_z1_distance / 2 / ee_r_z1
-        ee_fratio_0 = med_z0_distance / 2 / ee_r_z0
+        # Use the "model" data to do the distance and focal ratio calculation.
+        # Model data is not smoothed.
+        ee_sample, model_ee_r_z0, model_ee_r_z1, model_z0_distance, model_z1_distance, \
+            model_med_z0_distance, model_med_z1_distance, model_ee_fratio_z0, model_ee_fratio_z1, \
+            model_success \
+                = fullcone.calculate_fratio(z0_ee.model_radius*pixelsize,
+                                            z0_ee.model_ee/z0_ee.ee_norm,
+                                            z1_ee.model_radius*pixelsize,
+                                            z1_ee.model_ee/z1_ee.ee_norm,
+                                            args.sep,
+                                            z0_bkg_lim=None if args.bkg_lim is None 
+                                                else args.bkg_lim[0]*z0_ee.circ_p[2]*pixelsize,
+                                            z1_bkg_lim=None if args.bkg_lim is None 
+                                                else args.bkg_lim[0]*z1_ee.circ_p[2]*pixelsize)
 
         # Main output file
         _ofile = Path(args.ofile).resolve()
@@ -187,14 +179,16 @@ class FullConeEEFRatio(scriptbase.ScriptBase):
         if z0_bg is not None:
             results += f'Z0 Background:    {z0_bg.name}\n'
         results += f'Z0 S/N Threshold: {z0_thresh:.1f}\n' \
-                   f'Median Z0 distance (0.2 < EE < 0.9): {med_z0_distance:.2f} mm\n' \
-                   f'Z0 EE normalization (total flux): {z0_ee.ee_norm:.4e} ADU\n\n' \
+                   f'Z0 EE normalization (total flux): {z0_ee.ee_norm:.4e} ADU\n' \
+                   f'Median Z0 distance (0.2 < EE < 0.9) RAW: {med_z0_distance:.2f} mm\n' \
+                   f'Median Z0 distance (0.2 < EE < 0.9) MODEL: {model_med_z0_distance:.2f} mm\n\n' \
                    f'Z1 Image:         {z1.name}\n'
         if z1_bg is not None:
             results += f'Z1 Background:    {z1_bg.name}\n'
         results += f'Z1 S/N Threshold: {z1_thresh:.1f}\n' \
-                   f'Median Z1 distance (0.2 < EE < 0.9): {med_z1_distance:.2f} mm\n' \
-                   f'Z1 EE normalization (total flux): {z1_ee.ee_norm:.4e} ADU\n\n'
+                   f'Z1 EE normalization (total flux): {z1_ee.ee_norm:.4e} ADU\n' \
+                   f'Median Z1 distance (0.2 < EE < 0.9) RAW: {med_z1_distance:.2f} mm\n' \
+                   f'Median Z1 distance (0.2 < EE < 0.9) MODEL: {model_med_z1_distance:.2f} mm\n\n'
         header = results + 'EE is the fractional inclosed energy\n' \
                  'R0 is the radius in mm at the detector plane at the closest (z0) image\n' \
                  'R1 is the radius in mm at the detector plane at the farthest (z1) image\n' \
@@ -202,11 +196,24 @@ class FullConeEEFRatio(scriptbase.ScriptBase):
                  'F1 is the distance in mm to the farthest (z1) image using R1\n' \
                  'f0 is the focal ratio assuming the median z0 distance\n' \
                  'f1 is the focal ratio assuming the median z1 distance\n\n' \
-                 f'{"EE":>6} {"R0":>6} {"R1":>6} {"F0":>6} {"F1":>6} {"f0":>6} {"f1":>6}'
-        numpy.savetxt(_ofile, numpy.column_stack((ee_sample, ee_r_z0, ee_r_z1, z0_distance,
-                                                      z1_distance, ee_fratio_0, ee_fratio_1)),
-                      fmt=['%8.2f', '%6.2f', '%6.2f', '%6.2f', '%6.2f', '%6.2f', '%6.2f'],
+                 'MR0 is the (model) radius in mm at the detector plane at the closest (z0) image\n' \
+                 'MR1 is the (model) radius in mm at the detector plane at the farthest (z1) image\n' \
+                 'MF0 is the (model) distance in mm to the closest (z0) image using R0\n' \
+                 'MF1 is the (model) distance in mm to the farthest (z1) image using R1\n' \
+                 'Mf0 is the (model) focal ratio assuming the median z0 distance\n' \
+                 'Mf1 is the (model) focal ratio assuming the median z1 distance\n\n' \
+                 f'{"EE":>6} {"R0":>6} {"R1":>6} {"F0":>6} {"F1":>6} {"f0":>6} {"f1":>6} ' \
+                 f'{"MR0":>6} {"MR1":>6} {"MF0":>6} {"MF1":>6} {"Mf0":>6} {"Mf1":>6}'
+        numpy.savetxt(_ofile, numpy.column_stack((ee_sample,
+                                                  ee_r_z0, ee_r_z1, z0_distance,
+                                                  z1_distance, ee_fratio_z0, ee_fratio_z1,
+                                                  model_ee_r_z0, model_ee_r_z1,
+                                                  model_z0_distance, model_z1_distance,
+                                                  model_ee_fratio_z0, model_ee_fratio_z1)),
+                      fmt=['%8.2f', '%6.2f', '%6.2f', '%6.2f', '%6.2f', '%6.2f', '%6.2f',
+                                    '%6.2f', '%6.2f', '%6.2f', '%6.2f', '%6.2f', '%6.2f'],
                       header=header)
-        print(results)
 
+        # Also print the results to the screen
+        print(results)
 
