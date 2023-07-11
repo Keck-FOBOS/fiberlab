@@ -7,9 +7,9 @@ from . import scriptbase
 
 class BrowseImages(scriptbase.ScriptBase):
 
-    @classmethod
-    def name(cls):
-        return 'fiberlab_browse_images'
+#    @classmethod
+#    def name(cls):
+#        return 'fiberlab_browse_images'
 
     @classmethod
     def get_parser(cls, width=None):
@@ -17,10 +17,16 @@ class BrowseImages(scriptbase.ScriptBase):
         parser = super().get_parser(description='Browse images in a directory', width=width)
         parser.add_argument('root', default=str(Path().resolve()), type=str,
                             help='Directory with output files.')
+        parser.add_argument('-i', '--image', default=None, type=str,
+                            help='Name of single file to show.  If provided, -s and -e arguments '
+                                 'are ignored.')
         parser.add_argument('-s', '--search', default=None, type=str,
                             help='Search string for image names')
         parser.add_argument('-e', '--ext', default='.fit', type=str,
                             help='Image extension')
+        parser.add_argument('-z', '--zlim', nargs=2, default=None, type=float,
+                            help='The upper and lower values to use for the image plot limits.  '
+                                 'Default is to plot +/- 5 sigma around the image mean.')
         return parser
 
     @staticmethod
@@ -42,12 +48,22 @@ class BrowseImages(scriptbase.ScriptBase):
         if not root.exists():
             raise FileNotFoundError(f'{root} is not a valid directory.')
 
-        search_str = f'*{args.ext}' if args.search is None else f'*{args.search}*{args.ext}'
-        files = sorted(list(root.glob(search_str)))
+        if args.image is None:
+            search_str = f'*{args.ext}' if args.search is None else f'*{args.search}*{args.ext}'
+            files = sorted(list(root.glob(search_str)))
+        else:
+            f = root / args.image
+            if not f.exists():
+                raise FileNotFoundError(f'{f} does not exist!')
+            files = [f]
         for f in files:
             img = bench_image(f)
-            mean = numpy.mean(img)
-            std = numpy.std(img)
+            if args.zlim is None:
+                mean = numpy.mean(img)
+                std = numpy.std(img)
+                zlim = [mean - 5*std, mean + 5*std]
+            else:
+                zlim = args.zlim
 
             base_width = 0.6
             aspect = img.shape[0]/img.shape[1]
@@ -63,7 +79,7 @@ class BrowseImages(scriptbase.ScriptBase):
 
             ax = fig.add_axes([0.5-dx/2, 0.15, dx, dy])
             implt = ax.imshow(img, origin='lower', interpolation='nearest',
-                              vmin=mean-5*std, vmax=mean+5*std)
+                              vmin=zlim[0], vmax=zlim[1])
             cax = fig.add_axes([0.5-dx/2 + dx/5, 0.05, 3*dx/5, 0.01])
             fig.colorbar(implt, cax=cax, orientation='horizontal')
 

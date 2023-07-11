@@ -83,49 +83,6 @@ def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=N
     # Analyze the image
     ee = EECurve(img_nobg, **kwargs)
 
-#    # Create a smoothed version of the flux
-#    smooth_flux = contour.iterative_filter(ee.flux, 301, 2) #, clip_iter=10, sigma=5.)
-#    # Create a down-sampled set of radii for the model
-#    model_radius = numpy.linspace(0,max(ee.radius),500)[1:]
-#    # Sample the smoothed flux to get the model flux
-#    model_flux = interpolate.interp1d(ee.radius, smooth_flux,
-#                                      fill_value='extrapolate')(model_radius)
-#    # Sample the EE
-#    model_ee = interpolate.interp1d(ee.radius, ee.ee, bounds_error=False,
-#                                    fill_value=(ee.ee[0], ee.ee[-1]))(model_radius)
-#    # Create the model image
-#    model_img = interpolate.interp1d(model_radius, model_flux, bounds_error=False,
-#                                     fill_value=(model_flux[0], model_flux[-1]))(ee.circ_r)
-#
-#    # Construct a model of the luminosity distribution using the EE
-#    # curve
-#    # - Sample the measured EE curve at discrete radii
-#    model_radius = numpy.linspace(0,max(ee.radius),500)[1:]
-#    model_ee = numpy.zeros_like(model_radius)
-#    indx = (model_radius > numpy.amin(ee.radius)) & (model_radius < numpy.amax(ee.radius))
-#    model_ee[indx] = interpolate.interp1d(ee.radius, ee.ee)(model_radius[indx])
-#    # - Handle extrapolation
-#    indx = (model_radius <= numpy.amin(ee.radius))
-#    if any(indx):
-#        model_ee[indx] = ee.ee[0]
-#    indx = (model_radius >= numpy.amax(ee.radius))
-#    if any(indx):
-#        model_ee[indx] = ee.ee[-1]
-#    # - Construct the model flux as the derivative of the EE curve
-#    model_flux = numpy.append(model_ee[0]/model_radius[0]**2,
-#                              numpy.diff(model_ee)/numpy.diff(model_radius**2)) / numpy.pi
-#    # - Interpolate the 1D model into a 2D image
-#    model_img = numpy.zeros_like(img)
-#    indx = (ee.circ_r > model_radius[0]) & (ee.circ_r < model_radius[-1])
-#    model_img[indx] = interpolate.interp1d(model_radius, model_flux)(ee.circ_r[indx])
-#    # - Handle extrapolation
-#    indx = ee.circ_r <= model_radius[0]
-#    if numpy.any(indx):
-#        model_img[indx] = model_flux[0]
-#    indx = ee.circ_r >= model_radius[-1]
-#    if numpy.any(indx):
-#        model_img[indx] = model_flux[-1]
-
     r_units, circ_r = contour.convert_radius(ee.circ_r, pixelsize=_pixelsize, distance=distance)
     radius = contour.convert_radius(ee.radius, pixelsize=_pixelsize, distance=distance)[1]
     model_radius = contour.convert_radius(ee.model_radius, pixelsize=_pixelsize,
