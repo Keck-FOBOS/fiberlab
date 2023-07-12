@@ -147,8 +147,8 @@ class FullConeFarField(scriptbase.ScriptBase):
         print(f'# Image file: {img_file.name}')
         print(f'# Pixelsize: {args.pixelsize} mm')
         print(f'# Total Flux: {ee.ee_norm:.2f}')
-        print('# EE90: ' + ('Error' if ee90 is None else f'{ee90:.2f}'))
-        print('# Model EE90: ' + ('Error' if model_ee90 is None else f'{model_ee90:.2f}'))
+        print('# Radius at EE90 (mm): ' + ('Error' if ee90 is None else f'{ee90:.2f}'))
+        print('# Model radius at EE90 (mm): ' + ('Error' if model_ee90 is None else f'{model_ee90:.2f}'))
         if args.distance is not None:
             print(f'# Distance from fiber output to image: {args.distance:.2f} mm')
             print('# f/# at EE90: ' + ('Error' if fratio90 is None else f'{fratio90:.2f}'))
