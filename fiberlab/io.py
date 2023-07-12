@@ -18,7 +18,7 @@ def bench_image(ifile, ext=0, compress=True):
 
     Args:
         ifile (:obj:`str`, `Path`_):
-            File name
+            File name.  Can be None, but, if so, None is returned.
         ext (:obj:`int`, optional):
             If the file is a multi-extension fits file, this selects the
             extension with the relevant data.
@@ -28,20 +28,27 @@ def bench_image(ifile, ext=0, compress=True):
             summing across the last dimension?
 
     Returns:
-        `numpy.ndarray`_: Array with the (floating-point) image data.
+        `numpy.ndarray`_: Array with the (floating-point) image data.  If
+        ``ifile`` is None, this is also None.
     """
+    # No file so return None.
     if ifile is None:
         return None
 
+    # Set the file path and check that it exists.
     _ifile = Path(ifile).resolve()
     if not _ifile.exists():
         raise FileNotFoundError(f'{_ifile} does not exist!')
 
+    # Read fits files using astropy
     if any([s in ['.fit', '.fits'] for s in _ifile.suffixes]):
         return fits.open(_ifile)[ext].data.astype(float)
+
+    # Read all other files using scikit-image
     img = io.imread(_ifile).astype(float)
     if compress and img.ndim == 3:
         img = numpy.sum(img, axis=2)
+
     return img
 
 

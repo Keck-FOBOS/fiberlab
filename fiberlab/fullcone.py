@@ -178,12 +178,12 @@ def fullcone_farfield_output_plot(img_file, img, model, trace, circ_p, radius, f
 
     image_lim = contour.growth_lim(numpy.append(img, model), 0.99, fac=1.2)
     resid_lim = contour.growth_lim(resid, 0.90, fac=1.0, midpoint=0.)
-    rfac = 1.5 if window is None else window
+    rfac = window
     if bkg_lim is not None:
-        rfac = max(bkg_lim[0], rfac)
+        rfac = 1.1 * bkg_lim[0] if rfac is None else max(1.1 * bkg_lim[0], rfac)
         if len(bkg_lim) == 2:
-            rfac = max(bkg_lim[1], rfac)
-    radius_lim = [0, rfac*rc]
+            rfac = max(1.1 * bkg_lim[1], rfac)
+    radius_lim = [0, numpy.amax(radius) if rfac is None else rfac*rc]
 
     w,h = pyplot.figaspect(1)
     fig = pyplot.figure(figsize=(1.5*w,1.5*h))
