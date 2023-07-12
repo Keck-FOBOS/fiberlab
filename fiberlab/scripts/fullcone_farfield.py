@@ -27,6 +27,9 @@ class FullConeFarField(scriptbase.ScriptBase):
                             help='Display the QA plot in a window; do not write it to a file.')
         parser.add_argument('--skip_plots', default=False, action='store_true',
                             help='Skip the plot')
+        parser.add_argument('--plot_file', default=None, type=str,
+                            help='Name of output plot file.  If not provide, based on name of '
+                                 'input image file.')
         parser.add_argument('-s', '--snr_img', default=False, action='store_true',
                             help='If creating the QA plot, show the estimated S/N of the data '
                                  'instead of the counts.')
@@ -92,7 +95,9 @@ class FullConeFarField(scriptbase.ScriptBase):
         elif args.show:
             plot_file = 'show'
         else:
-            plot_file = oroot / f'{img_file.with_suffix("").name}_qa.png'
+            plot_file = oroot / (f'{img_file.with_suffix("").name}_qa.png'
+                                    if args.plot_file is None else args.plot_file)
+
         print(f'Analyzing {img_file.name}')
         ee = fullcone.fullcone_farfield_output(img_file, bkg_file=bkg_file,
                                                   threshold=args.threshold,
