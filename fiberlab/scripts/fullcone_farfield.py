@@ -113,13 +113,15 @@ class FullConeFarField(scriptbase.ScriptBase):
         normalized_ee = ee.ee/ee.ee_norm
         if args.smooth:
             normalized_ee = contour.iterative_filter(normalized_ee, 301, 2)
-        last = numpy.where(numpy.diff(normalized_ee) < 0)[0][0]
+        indx = numpy.where(numpy.diff(normalized_ee) < 0)[0]
+        last = indx[0] if len(indx) > 0 else normalized_ee.size-1
         if args.bkg_lim is not None:
             last = min(last, numpy.where(ee.radius > args.bkg_lim[0]*ee.circ_p[2])[0][0])
 
         # "Model" values
         normalized_model_ee = ee.model_ee/ee.ee_norm
-        model_last = numpy.where(numpy.diff(normalized_model_ee) < 0)[0][0]
+        indx = numpy.where(numpy.diff(normalized_model_ee) < 0)[0]
+        model_last = indx[0] if len(indx) > 0 else normalized_model_ee.size-1
         if args.bkg_lim is not None:
             model_last = min(model_last,
                              numpy.where(ee.model_radius > args.bkg_lim[0]*ee.circ_p[2])[0][0])
