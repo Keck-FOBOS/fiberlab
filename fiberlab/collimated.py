@@ -7,11 +7,12 @@ Module with methods used to analyze and plot collimated test images.
 from IPython import embed
 
 import numpy
-from scipy import interpolate
+from scipy import interpolate, ndimage
 from matplotlib import pyplot, ticker
 
 from . import contour
 from .io import bench_image
+from . import util
 
 
 def default_threshold():
@@ -23,7 +24,8 @@ def default_threshold():
 
 
 def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsize=None,
-                               distance=None, plot_file=None, snr_img=False, ring_box=None):
+                               distance=None, plot_file=None, snr_img=False, window=None,
+                               box=None, gau=None, dr=None, savgol=(301,2)):
     """
     Analyze an output far-field image for a collimated input beam.
 
@@ -45,27 +47,58 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
         snr_img (:obj:`bool`, optional):
             If creating the QA plot, plot the estimated S/N (used to set the
             contour level) instead of the measured counts.
-        ring_box (:obj:`float`, optional):
+        window (:obj:`float`, optional):
             Limit the plotted image regions to this times the best-fitting peak
             of the ring flux distribution.  If None, the full image is shown.
-    
+        box (:obj:`int`, optional):
+            Boxcar average the image by this number of pixels.  If None, full
+            resolution of image is used.
+        gau (:obj:`float`, optional):
+            Gaussian smooth the image used to measure the contour that is fit to
+            find the beam center.  This provides the sigma of the 2D smoothing
+            Gaussian in *binned* pixels (see ``box``).  Note the smoothed image
+            is *not* used to measure the ring peak or width, once the center of
+            the beam is measured.
+        dr (:obj:`float`, optional):
+            Radial binning step.  Units depend on values given for ``pixelsize``
+            and ``distance``.  If both are None, the value is in pixels.  If
+            ``pixelsize`` is provided, units are mm.  If both are provided,
+            units are in deg.  If None, data is not binned, and the smoothed
+            profile alone is used to find the peak and width.
+        savgol (:obj:`tuple`, optional):
+            Two parameters used for the the Savitzky-Golay filter applied to the
+            data to "model" the flux.  These two parameters are (1)
+            ``window_length`` and (2) ``polyorder`` as implemented by the
+            ``scipy.signal.savgol_filter`` function.  When binning the data
+            (``dr`` is provided), the first number in this tuple should be
+            significantly smaller.
+
     Returns:
         :obj:`tuple`: Three floating-point objects providing the radius at which
         the peak flux is found, the flux at the peak, and the width of the ring.
     """
     # Read in the image and do the basic background subtraction
     img = bench_image(img_file)
+    if box is not None:
+        img = util.boxcar_average(img, box)*box**2
     if bkg_file is None:
         img_nobg = img.copy()
     else:
         bkg = bench_image(bkg_file)
+        if box is not None:
+            bkg = util.boxcar_average(bkg, box)*box**2
         if img.shape != bkg.shape:
             raise ValueError('Image shape mismatch.')
         img_nobg = img - bkg
+    _pixelsize = pixelsize
+    if box is not None:
+        _pixelsize *= box
 
     # Get the contour to use for finding the image center
     _threshold = default_threshold() if threshold is None else threshold
-    level, trace, trace_sig, trace_bkg = contour.get_contour(img_nobg, threshold=_threshold)
+    if gau is not None:
+        _img_nobg = ndimage.gaussian_filter(img_nobg, sigma=gau)
+    level, trace, trace_sig, trace_bkg = contour.get_contour(_img_nobg, threshold=_threshold)
     # Remove any residual background
     img_nobg -= trace_bkg
 
@@ -77,15 +110,31 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
     x, y = numpy.meshgrid(numpy.arange(nx), numpy.arange(ny))
     circ_r, circ_theta = contour.Circle.polar(x, y, circ_p)
 
-    r_units, circ_r = contour.convert_radius(circ_r, pixelsize=pixelsize, distance=distance)
+    r_units, circ_r = contour.convert_radius(circ_r, pixelsize=_pixelsize, distance=distance)
 
     # Collapse the flux in radius
     srt = numpy.argsort(circ_r.ravel())
     radius = circ_r.ravel()[srt]
     flux = img_nobg.ravel()[srt]
 
-    # Smooth it
-    smooth_flux = contour.iterative_filter(flux, 301, 2) #, clip_iter=10, sigma=5.)
+    if dr is None:
+        bin_radius = radius
+        bin_flux = flux
+        smooth_flux = contour.iterative_filter(bin_flux, savgol[0], savgol[1])
+    else:
+        bini = (radius/0.01).astype(int)    
+        nbin = numpy.amax(bini) + 1
+        bin_flux = numpy.zeros(nbin, dtype=float)
+        bin_radius = dr*(numpy.arange(nbin) + 0.5)
+        for i in range(nbin):
+            indx = bini == i
+            if not numpy.any(indx):
+                continue
+            bin_flux[i] = numpy.mean(flux[indx])
+#            bin_radius[i] = numpy.mean(radius[indx])
+
+        # Smooth it
+        smooth_flux = contour.iterative_filter(bin_flux, savgol[0], savgol[1]) #, clip_iter=10, sigma=5.)
 
     # Find the radius of the peak
     peak_indx = numpy.argmax(smooth_flux)
@@ -93,27 +142,27 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
     # Find the FWHM
     halfmax = smooth_flux[peak_indx]/2
     try:
-        left = interpolate.interp1d(smooth_flux[:peak_indx], radius[:peak_indx])(halfmax)
+        left = interpolate.interp1d(smooth_flux[:peak_indx], bin_radius[:peak_indx])(halfmax)
     except:
         left = 0.
-    right = interpolate.interp1d(smooth_flux[peak_indx:], radius[peak_indx:])(halfmax)
+    right = interpolate.interp1d(smooth_flux[peak_indx:], bin_radius[peak_indx:])(halfmax)
 
     # Generate a "model image"
-    model = interpolate.interp1d(radius, smooth_flux)(circ_r)
+    model = interpolate.interp1d(bin_radius, smooth_flux)(circ_r)
 
     if plot_file is not None:
         collimated_farfield_output_plot(img_file, img_nobg, model, _threshold, level, trace,
-                                        circ_p, radius, flux, smooth_flux, peak_indx,
+                                        circ_p, bin_radius, bin_flux, smooth_flux, peak_indx,
                                         left, right, snr_img=snr_img, r_units=r_units,
-                                        ring_box=ring_box, pixelsize=pixelsize, distance=distance,
+                                        window=window, pixelsize=_pixelsize, distance=distance,
                                         ofile=None if plot_file == 'show' else plot_file)
 
-    return radius[peak_indx], flux[peak_indx], right-left
+    return bin_radius[peak_indx], bin_flux[peak_indx], right-left
 
 
 def collimated_farfield_output_plot(img_file, img, model, threshold, level, trace, circ_p, radius,
                                     flux, smooth_flux, peak_indx, left, right, snr_img=False,
-                                    r_units='pix', ring_box=None, pixelsize=None, distance=None,
+                                    r_units='pix', window=None, pixelsize=None, distance=None,
                                     ofile=None):
     """
     Diagnostic plot for the measurements of a collimated far-field output beam.
@@ -157,7 +206,7 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
             the measured counts.
         r_umits (:obj:`str`, optional):
             The units of the radius vector.
-        ring_box (:obj:`float`, optional):
+        window (:obj:`float`, optional):
             Limit the plotted image regions to this times the best-fitting
             contour radius.  If None, the full image is shown.
         ofile (:obj:`str`, `Path`_, optional):
@@ -167,17 +216,16 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
     xc, yc, rc = circ_p
     ny, nx = img.shape
     extent = [-0.5, nx-0.5, -0.5, ny-0.5]
-    if ring_box is None:
+
+    if window is None:
         aspect = ny/nx
         xlim = None
         ylim = None
     else:
-#        peak_r = contour.convert_radius(numpy.array([radius[peak_indx]]), pixelsize=pixelsize,
-#                                        distance=distance, inverse=True)[1][0] 
         peak_r = contour.convert_radius(numpy.array([right]), pixelsize=pixelsize,
                                         distance=distance, inverse=True)[1][0] 
-        xlim = [xc - ring_box*peak_r, xc + ring_box*peak_r]
-        ylim = [yc - ring_box*peak_r, yc + ring_box*peak_r]
+        xlim = [xc - window*peak_r, xc + window*peak_r]
+        ylim = [yc - window*peak_r, yc + window*peak_r]
         aspect = 1.
 
     resid = img - model
