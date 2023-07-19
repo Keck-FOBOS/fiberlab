@@ -272,18 +272,22 @@ def parse_file_list(root, par, threshold):
         if not (_root / bkgs[i]).exists():
             raise FileNotFoundError(f'{bkgs[i]} is not a file in {_root}.')
 
+    if nfiles == 2:
+        return _root / imgs[0], _root / bkgs[0], thresh[0], \
+                 _root / imgs[1], _root / bkgs[1], thresh[1], None, None, None
+
     # Find the z0 file
-#    indx = numpy.where([i[:2] == 'z0' for i in imgs])[0]
-#    if len(indx) != 1:
-#        raise ValueError('There should one and only one file that starts with "z0".')
+    indx = numpy.where([i[:2] == 'z0' for i in imgs])[0]
+    if len(indx) != 1:
+        raise ValueError('There should one and only one file that starts with "z0".')
     z0 = _root / imgs[indx[0]]
     z0_bg = _root / bkgs[indx[0]]
     z0_thresh = thresh[indx[0]]
 
     # Find the z1 file
-#    indx = numpy.where([i[:2] == 'z1' for i in imgs])[0]
-#    if len(indx) != 1:
-#        raise ValueError('There should one and only one file that starts with "z1".')
+    indx = numpy.where([i[:2] == 'z1' for i in imgs])[0]
+    if len(indx) != 1:
+        raise ValueError('There should one and only one file that starts with "z1".')
     z1 = _root / imgs[indx[0]]
     z1_bg = _root / bkgs[indx[0]]
     z1_thresh = thresh[indx[0]]
