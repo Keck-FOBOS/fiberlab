@@ -613,15 +613,15 @@ def calculate_fratio(z0_radius, z0_ee, z1_radius, z1_ee, sep, smooth=False, z0_b
         ee_r_z0 = interpolate.interp1d(_z0_ee[:z0_last], z0_radius[:z0_last])(ee_sample)
     except:
         warnings.warn('Error interpolating raw EE data for z0 image.')
-        success = False
-        ee_r_z0 = empty
+        ee_r_z0 = interpolate.interp1d(_z0_ee[:z0_last], z0_radius[:z0_last], bounds_error=False,
+                                       fill_value=-1.)(ee_sample)
 
     try:
         ee_r_z1 = interpolate.interp1d(_z1_ee[:z1_last], z1_radius[:z1_last])(ee_sample)
     except:
         warnings.warn('Error interpolating raw EE data for z1 image.')
-        success = False
-        ee_r_z1 = empty
+        ee_r_z1 = interpolate.interp1d(_z1_ee[:z1_last], z1_radius[:z1_last], bounds_error=False,
+                                       fill_value=-1.)(ee_sample)
 
     if not success:
         return ee_sample, ee_r_z0, ee_r_z1, empty, empty, -1., -1., empty, empty, success

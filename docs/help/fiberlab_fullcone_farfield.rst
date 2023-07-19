@@ -1,9 +1,12 @@
 .. code-block:: console
 
     $ fiberlab_fullcone_farfield -h
-    usage: fiberlab_fullcone_farfield [-h] [-b BKG_FILE] [-p PIXELSIZE]
-                                      [-d DISTANCE] [-t THRESHOLD] [-w] [-s]
-                                      [-r RING_BOX]
+    usage: fiberlab_fullcone_farfield [-h] [--bkg_file BKG_FILE] [-p PIXELSIZE]
+                                      [-d DISTANCE] [-t THRESHOLD] [--show]
+                                      [--skip_plots] [--plot_file PLOT_FILE] [-s]
+                                      [--smooth] [-c BKG_CLIP BKG_CLIP BKG_CLIP]
+                                      [-b BKG_LIM [BKG_LIM ...]] [--bkg_sig BKG_SIG]
+                                      [-w WINDOW] [--box BOX] [-o OROOT]
                                       img_file
     
     Calculate results for a full-cone far-field test.
@@ -13,8 +16,7 @@
     
     optional arguments:
       -h, --help            show this help message and exit
-      -b BKG_FILE, --bkg_file BKG_FILE
-                            File with only background flux (default: None)
+      --bkg_file BKG_FILE   File with only background flux (default: None)
       -p PIXELSIZE, --pixelsize PIXELSIZE
                             Size of the image camera pixels in mm. (default: 0.018)
       -d DISTANCE, --distance DISTANCE
@@ -23,12 +25,40 @@
       -t THRESHOLD, --threshold THRESHOLD
                             S/N threshold that sets the contour used to identify the
                             center of the output ring. (default: 1.5)
-      -w, --window          Display the QA plot in a window; do not write it to a
+      --show                Display the QA plot in a window; do not write it to a
                             file. (default: False)
+      --skip_plots          Skip the plot (default: False)
+      --plot_file PLOT_FILE
+                            Name of output plot file. If not provide, based on name
+                            of input image file. (default: None)
       -s, --snr_img         If creating the QA plot, show the estimated S/N of the
                             data instead of the counts. (default: False)
-      -r RING_BOX, --ring_box RING_BOX
-                            Limit the plotted image regions to this times the best-
-                            fitting peak of the ring flux distribution. If None, the
-                            full image is shown. (default: None)
+      --smooth              Smooth the EE curve to limit interpolation errors
+                            (default: False)
+      -c BKG_CLIP BKG_CLIP BKG_CLIP, --bkg_clip BKG_CLIP BKG_CLIP BKG_CLIP
+                            Clipping parameters used for setting the contour
+                            threshold. Three numbers must be provided: (1) the
+                            number of clipping iterations, (2) the lower rejection
+                            threshold, and (3) the higher rejection threshold.
+                            (default: [10.0, 100.0, 3.0])
+      -b BKG_LIM [BKG_LIM ...], --bkg_lim BKG_LIM [BKG_LIM ...]
+                            One or multiple of the spot radius (as defined by the
+                            fitted contour used to define spot center) to use for
+                            the background estimate. If none, the background is
+                            determined by first clipping the high valued pixels. If
+                            one number is provided, all pixels above this radius are
+                            used. If two numbers are provided, pixels between the
+                            two radii are used. No more than 2 values can be given!
+                            (default: None)
+      --bkg_sig BKG_SIG     Sigma clipping level for the background measurement and
+                            masking. (default: 3.0)
+      -w WINDOW, --window WINDOW
+                            Limit the plotted image regions to this times the
+                            fiducial radius of the far-field spot. If None, the full
+                            image is shown. (default: None)
+      --box BOX             Boxcar average the image before analyzing it (default:
+                            None)
+      -o OROOT, --oroot OROOT
+                            Directory for output files (default:
+                            /Users/westfall/Work/packages/fobos/fiberlab/docs)
     

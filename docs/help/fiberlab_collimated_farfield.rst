@@ -2,8 +2,10 @@
 
     $ fiberlab_collimated_farfield -h
     usage: fiberlab_collimated_farfield [-h] [-b BKG_FILE] [-p PIXELSIZE]
-                                        [-d DISTANCE] [-t THRESHOLD] [-w] [-s]
-                                        [-r RING_BOX]
+                                        [-d DISTANCE] [-t THRESHOLD] [--show]
+                                        [--skip_plots] [--plot_file PLOT_FILE] [-s]
+                                        [-w WINDOW] [--gau GAU] [--box BOX]
+                                        [--model MODEL MODEL MODEL]
                                         img_file
     
     Calculate results for a collimated FRD test.
@@ -23,12 +25,36 @@
       -t THRESHOLD, --threshold THRESHOLD
                             S/N threshold that sets the contour used to identify the
                             center of the output ring. (default: 1.5)
-      -w, --window          Display the QA plot in a window; do not write it to a
+      --show                Display the QA plot in a window; do not write it to a
                             file. (default: False)
+      --skip_plots          Skip the plot (default: False)
+      --plot_file PLOT_FILE
+                            Name of output plot file. If not provide, based on name
+                            of input image file. (default: None)
       -s, --snr_img         If creating the QA plot, show the estimated S/N of the
                             data instead of the counts. (default: False)
-      -r RING_BOX, --ring_box RING_BOX
+      -w WINDOW, --window WINDOW
                             Limit the plotted image regions to this times the best-
                             fitting peak of the ring flux distribution. If None, the
                             full image is shown. (default: None)
+      --gau GAU             Smooth the image with a Gaussian kernel with this sigma
+                            before analyzing the results. No smoothing is performed
+                            by default. (default: None)
+      --box BOX             Boxcar average the image before analyzing it (default:
+                            None)
+      --model MODEL MODEL MODEL
+                            Modeling arguments: The step for the radial bin, the
+                            smoothing filter window length, and the polynomial
+                            order. The first value should be in units of pixels, mm,
+                            or deg. Use pixels if --pixelsize and --distance are not
+                            provided, mm if --pixelsize only is provided, and deg if
+                            both are provided. If less than 0, no binning is
+                            performed and the data is smoothed directly. The second
+                            and last values are the window length and polynomial
+                            order used by the Savitzky-Golay filter used to smooth
+                            the data to create the "model". The window length should
+                            be large when not smoothing. The polynomial order must
+                            always be less than the window size, which must always
+                            be less than the number of data points. (default: [-1,
+                            301, 2])
     

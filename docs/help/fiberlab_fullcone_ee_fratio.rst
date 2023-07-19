@@ -6,7 +6,7 @@
                                        [--smooth] [-c BKG_CLIP BKG_CLIP BKG_CLIP]
                                        [-b BKG_LIM [BKG_LIM ...]]
                                        [--bkg_sig BKG_SIG] [-w WINDOW] [-o OROOT]
-                                       [--skip_plots]
+                                       [--skip_plots] [--box BOX]
                                        root ofile
     
     Calculate results for a full-cone far-field test.
@@ -67,4 +67,6 @@
                             /Users/westfall/Work/packages/fobos/fiberlab/docs)
       --skip_plots          Only create the output data file and skip the plots.
                             (default: False)
+      --box BOX             Boxcar average the image before analyzing it (default:
+                            None)
     
