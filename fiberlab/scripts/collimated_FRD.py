@@ -24,16 +24,17 @@ class CollimatedFRD(scriptbase.ScriptBase):
         parser.add_argument('-t', '--threshold', default=default_threshold(), type=float,
                             help='S/N threshold that sets the contour used to identify the center '
                                  'of the output ring.')
-        parser.add_argument('-r', '--ring_box', default=None, type=float,
+        parser.add_argument('-w', '--window', default=None, type=float,
                             help='Limit the plotted image regions to this times the best-fitting '
                                  'peak of the ring flux distribution.  If None, the full image '
                                  'is shown.')
         parser.add_argument('-o', '--oroot', default=str(Path().resolve()), type=str,
                             help='Directory for output files')
         parser.add_argument('-f', '--files', default=None, type=str,
-                            help='Name of a file that provides 2 or 3 columns: (1) the '
+                            help='Name of a file that provides 2, 3, or 4 columns: (1) the '
                                  'files to analyze, (2) the background image to use for each '
-                                 'file, and (3) the threshold to use for each file.  If this '
+                                 'file, (3) the threshold to use for each file, and (4) the '
+                                 'image designation.  If this '
                                  'file is provided, any threshold is ignored and the root '
                                  'directory is not trolled for all bg*, z*, and a* files.  The '
                                  'last column with the thresholds can be omitted, which means '
@@ -41,6 +42,27 @@ class CollimatedFRD(scriptbase.ScriptBase):
                                  'its default).')
         parser.add_argument('-q', '--no_qa', dest='qa', default=True, action='store_false',
                             help='Skip making the individual QA plots for each image.')
+
+        parser.add_argument('--gau', default=None, type=float,
+                            help='Smooth the image with a Gaussian kernel with this sigma before '
+                                 'analyzing the results.  No smoothing is performed by default.')
+        parser.add_argument('--box', default=None, type=int,
+                            help='Boxcar average the image before analyzing it')
+
+        parser.add_argument('--model', default=[-1, 301, 2], nargs=3, type=float,
+                            help='Modeling arguments: The step for the radial bin, the smoothing '
+                                 'filter window length, and the polynomial order.  The first '
+                                 'value should be in units of pixels, mm, or deg.  Use pixels '
+                                 'if --pixelsize and --distance are not provided, mm if '
+                                 '--pixelsize only is provided, and deg if both are provided.  If '
+                                 'less than 0, no binning is performed and the data is smoothed '
+                                 'directly.  The second and last values are the window length '
+                                 'and polynomial order used by the Savitzky-Golay filter used to '
+                                 'smooth the data to create the "model".  The window length '
+                                 'should be large when not smoothing.  The polynomial order must '
+                                 'always be less than the window size, which must always be less '
+                                 'than the number of data points.')
+
         parser.add_argument('--summary', nargs='?', const='', default=None,
                             help='Produce a summary plot showing the ring width as a function of '
                                  'input angle/f-ratio.  The argument given must be the name of '
@@ -79,21 +101,27 @@ class CollimatedFRD(scriptbase.ScriptBase):
         z0, z0_bg, z0_thresh, z1, z1_bg, z1_thresh, afiles, a_bg, a_thresh \
                 = io.gather_collimated_file_list(root, par=args.files, threshold=args.threshold)
 
+        # Parameters used to generate the model ring profile
+        dr = None if args.model[0] < 0 else args.model[0]
+        savgol = tuple([int(m) for m in args.model[1:]])
+
         # Analyze the two baseline images
         plot_file = oroot / f'{z0.with_suffix("").name}_qa.png' if args.qa else None
         print(f'Analyzing {z0.name}')
         z0_rad, z0_peak, z0_fwhm \
                 = collimated.collimated_farfield_output(z0, bkg_file=z0_bg, threshold=z0_thresh,
                                                         pixelsize=args.pixelsize,
-                                                        plot_file=plot_file,
-                                                        ring_box=args.ring_box)
+                                                        plot_file=plot_file, window=args.window,
+                                                        gau=args.gau, box=args.box, dr=dr,
+                                                        savgol=savgol)
         plot_file = oroot / f'{z1.with_suffix("").name}_qa.png' if args.qa else None
         print(f'Analyzing {z1.name}')
         z1_rad, z1_peak, z1_fwhm \
                 = collimated.collimated_farfield_output(z1, bkg_file=z1_bg, threshold=z1_thresh,
                                                         pixelsize=args.pixelsize,
-                                                        plot_file=plot_file,
-                                                        ring_box=args.ring_box)
+                                                        plot_file=plot_file, window=args.window,
+                                                        gau=args.gau, box=args.box, dr=dr,
+                                                        savgol=savgol)
 
         # Use the known distance between the two z images to get the distance
         # between the fiber output and z1.
@@ -125,7 +153,9 @@ class CollimatedFRD(scriptbase.ScriptBase):
                                                                 pixelsize=args.pixelsize,
                                                                 distance=distance,
                                                                 plot_file=plot_file,
-                                                                ring_box=args.ring_box)
+                                                                window=args.window,
+                                                                gau=args.gau, box=args.box, dr=dr,
+                                                                savgol=savgol)
         else:
             a_rad = a_peak = a_fwhm = None
 

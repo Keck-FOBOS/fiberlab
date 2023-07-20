@@ -77,8 +77,14 @@ class CollimatedFarField(scriptbase.ScriptBase):
             raise FileNotFoundError(f'{bkg_file} does not exist!')
 
         # Analyze the image
-        plot_file = 'show' if args.show \
-                        else img_file.parent / f'{img_file.with_suffix("").name}_qa.png'
+        if args.skip_plots:
+            plot_file = None
+        elif args.show:
+            plot_file = 'show'
+        else:
+            plot_file = oroot / (f'{img_file.with_suffix("").name}_qa.png'
+                                    if args.plot_file is None else args.plot_file)
+
         print(f'Analyzing {img_file.name}')
         dr = None if args.model[0] < 0 else args.model[0]
         savgol = tuple([int(m) for m in args.model[1:]])

@@ -96,8 +96,7 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
 
     # Get the contour to use for finding the image center
     _threshold = default_threshold() if threshold is None else threshold
-    if gau is not None:
-        _img_nobg = ndimage.gaussian_filter(img_nobg, sigma=gau)
+    _img_nobg = img_nobg if gau is None else ndimage.gaussian_filter(img_nobg, sigma=gau)
     level, trace, trace_sig, trace_bkg = contour.get_contour(_img_nobg, threshold=_threshold)
     # Remove any residual background
     img_nobg -= trace_bkg
@@ -122,7 +121,7 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
         bin_flux = flux
         smooth_flux = contour.iterative_filter(bin_flux, savgol[0], savgol[1])
     else:
-        bini = (radius/0.01).astype(int)    
+        bini = (radius/dr).astype(int)    
         nbin = numpy.amax(bini) + 1
         bin_flux = numpy.zeros(nbin, dtype=float)
         bin_radius = dr*(numpy.arange(nbin) + 0.5)
@@ -148,9 +147,10 @@ def collimated_farfield_output(img_file, bkg_file=None, threshold=None, pixelsiz
     right = interpolate.interp1d(smooth_flux[peak_indx:], bin_radius[peak_indx:])(halfmax)
 
     # Generate a "model image"
-    model = interpolate.interp1d(bin_radius, smooth_flux)(circ_r)
 
     if plot_file is not None:
+        model = interpolate.interp1d(bin_radius, smooth_flux, bounds_error=False,
+                                     fill_value=(smooth_flux[0], smooth_flux[-1]))(circ_r)
         collimated_farfield_output_plot(img_file, img_nobg, model, _threshold, level, trace,
                                         circ_p, bin_radius, bin_flux, smooth_flux, peak_indx,
                                         left, right, snr_img=snr_img, r_units=r_units,

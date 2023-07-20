@@ -113,6 +113,11 @@ def frd_plot(files, nas=None, labels=None, colors=None, theta_lim=None, dtheta_l
     if dfratio_lim is None:
         dfratio_lim = _dfratio_lim
 
+    theta_lim = numpy.sign(theta_lim)*(numpy.absolute(theta_lim)*numpy.array([1/1.1, 1.1]))
+    dtheta_lim = numpy.sign(dtheta_lim)*(numpy.absolute(dtheta_lim)*numpy.array([1/1.1, 1.1]))
+    fratio_lim = numpy.sign(fratio_lim)*(numpy.absolute(fratio_lim)*numpy.array([1/1.1, 1.1]))
+    dfratio_lim = numpy.sign(dfratio_lim)*(numpy.absolute(dfratio_lim)*numpy.array([1/1.1, 1.1]))
+
     tdt_ax.set_xlim(theta_lim)
     tdt_ax.set_ylim(dtheta_lim)
 

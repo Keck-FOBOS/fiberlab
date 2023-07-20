@@ -255,15 +255,20 @@ def parse_file_list(root, par, threshold):
 
     # Use numpy to read the file
     db = numpy.genfromtxt(str(_par), dtype=str)
-    if db.shape[1] not in [2, 3]:
-        raise ValueError(f'{_par} must only contain 2 or 3 columns!')
     nfiles = db.shape[0]
     if db.shape[1] == 2:
         imgs, bkgs = db.T
         thresh = [threshold]*nfiles
-    else:
+        pseudo = [None] * nfiles
+    elif db.shape[1] == 3:
         imgs, bkgs, thresh = db.T
         thresh = thresh.astype(float)
+        pseudo = [None] * nfiles
+    elif db.shape[1] == 4:
+        imgs, bkgs, thresh, pseudo = db.T
+        thresh = thresh.astype(float)
+    else:
+        raise ValueError(f'{_par} must only contain 2, 3, or 4 columns!')
 
     # Check the files exist in the root directory
     for i in range(nfiles):
@@ -277,23 +282,24 @@ def parse_file_list(root, par, threshold):
                  _root / imgs[1], _root / bkgs[1], thresh[1], None, None, None
 
     # Find the z0 file
-    indx = numpy.where([i[:2] == 'z0' for i in imgs])[0]
+    indx = numpy.where([i[:2] == 'z0' or p == 'z0' for i,p in zip(imgs, pseudo)])[0]
     if len(indx) != 1:
-        raise ValueError('There should one and only one file that starts with "z0".')
+        raise ValueError('There should one and only one file named/marked as "z0".')
     z0 = _root / imgs[indx[0]]
     z0_bg = _root / bkgs[indx[0]]
     z0_thresh = thresh[indx[0]]
 
     # Find the z1 file
-    indx = numpy.where([i[:2] == 'z1' for i in imgs])[0]
+    indx = numpy.where([i[:2] == 'z1' or p == 'z1' for i,p in zip(imgs, pseudo)])[0]
     if len(indx) != 1:
-        raise ValueError('There should one and only one file that starts with "z1".')
+        raise ValueError('There should one and only one file named/marked as "z1".')
     z1 = _root / imgs[indx[0]]
     z1_bg = _root / bkgs[indx[0]]
     z1_thresh = thresh[indx[0]]
 
     # Find the angle-sweep files
-    indx = numpy.where([i[0] == 'a' for i in imgs])[0]
+    indx = numpy.where([i[0] == 'a' or (p is not None and p[0] == 'a')
+                        for i,p in zip(imgs, pseudo)])[0]
     if nfiles != indx.size + 2:
         warnings.warn(f'Could not parse {nfiles - 2 - indx.size} files in {_par}.')
     if indx.size == 0:
