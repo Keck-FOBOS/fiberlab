@@ -91,7 +91,7 @@ def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=N
     if plot_file is not None:
         fullcone_farfield_output_plot(img_file, ee.img, ee.model_img,
                                       ee.trace, ee.circ_p, radius, ee.flux, ee.ee/ee.ee_norm,
-                                      ee.model_radius, ee.model_flux, snr_img=snr_img,
+                                      model_radius, ee.model_flux, snr_img=snr_img,
                                       img_sig=ee.level/ee.threshold,
                                       bkg_lim=ee.bkg_lim, r_units=r_units,
                                       window=window, pixelsize=_pixelsize, distance=distance,
@@ -213,6 +213,7 @@ def fullcone_farfield_output_plot(img_file, img, model, trace, circ_p, radius, f
         imgplt = ax.imshow(img, origin='lower', interpolation='nearest', cmap=cmap,
                            vmin=image_lim[0], vmax=image_lim[1], extent=extent)
     ax.scatter(xc, yc, marker='+', color='w', lw=2, zorder=4)
+    ax.plot(trace[:,0], trace[:,1], color='w', lw=0.5)
     cax = fig.add_axes([sx + dx/5, ey-dy-0.02, 3*dx/5, 0.01]) 
     cb = fig.colorbar(imgplt, cax=cax, orientation='horizontal')
 
