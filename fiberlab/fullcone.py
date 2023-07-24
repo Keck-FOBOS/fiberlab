@@ -645,3 +645,65 @@ def calculate_fratio(z0_radius, z0_ee, z1_radius, z1_ee, sep, smooth=False, z0_b
             med_z0_distance, med_z1_distance, ee_fratio_z0, ee_fratio_z1, success
 
 
+def ee_to_fratio(radius, ee, distance=None, smooth=False, bkg_lim=None):
+    """
+    Given the normalized EE curve from an image at a known distance from an
+    output spot, calculate the focal ratio at uniformly sampled EE values.
+
+    Args:
+        radius (`numpy.ndarray`_):
+            Radius in mm from the center of the spot.
+        ee (`numpy.ndarray`_):
+            Normalized encircled energy for the spot.
+        distance (:obj:`float`, optional):
+            Distance from the image to the output plain.  If not provided, all
+            the focal-ratio values are -1, and this function simply resamples
+            the EE data.
+        smooth (:obj:`bool`, optional):
+            Smooth the raw data before interpolating the radius at a fixed set
+            of EE values.
+        bkg_lim (:obj:`float`, optional):
+            Radius in mm from the center of the spot at which the background
+            flux was determined.
+
+    Returns:
+        :obj:`tuple`: A set of four objects: (1) the EE samples, (2) the radii
+        at which the spot reaches the sampled EE, (3) the focal ratios
+        calculated using the provided distance and the measured radii, and (4) a
+        boolean indicating if the calculation was successful.
+    """
+    # Smooth the EE curve, if requested
+    _ee = contour.iterative_filter(ee, 301, 2) if smooth else ee
+
+    # Find the index of the last value where the normalized EE is still
+    # increasing
+    last = numpy.where(numpy.diff(_ee) < 0)[0][0]
+
+    # Force the last index to be at a radius less than the beginning of the
+    # background region
+    if bkg_lim is not None:
+        last = min(last, numpy.where(radius > bkg_lim)[0][0])
+
+    # Get a uniform set of EE samples from 1% to 99%
+    ee_sample = numpy.linspace(0.01, 0.99, 99)
+    empty = numpy.full(ee_sample.size, -1, dtype=float)
+    success = True
+    try:
+        ee_r = interpolate.interp1d(_ee[:last], radius[:last])(ee_sample)
+    except:
+        warnings.warn('Error interpolating raw EE data.')
+        ee_r = interpolate.interp1d(_ee[:last], radius[:last], bounds_error=False,
+                                    fill_value=-1.)(ee_sample)
+
+    if not success:
+        return ee_sample, ee_r, empty, success
+
+    # Use the distance to calculate the f/#
+    fratio = numpy.full(ee_r.shape, -1., dtype=float) if distance is None else distance / 2 / ee_r
+
+    return ee_sample, ee_r, fratio, success
+
+
+
+
+

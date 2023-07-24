@@ -58,6 +58,9 @@ class FullConeFarField(scriptbase.ScriptBase):
                             help='Boxcar average the image before analyzing it')
         parser.add_argument('-o', '--oroot', default=str(Path().resolve()), type=str,
                             help='Directory for output files')
+        parser.add_argument('--ofile', default=None, type=str,
+                            help='Name of the file with discrete samples of the EE and focal '
+                                 'ratio.  Not written if no file name is provided.')
         return parser
 
     @staticmethod
@@ -152,8 +155,10 @@ class FullConeFarField(scriptbase.ScriptBase):
         print('# Result from fullcone_farfield script')
         print(f'# Written: {time.strftime("%a %d %b %Y %H:%M:%S",time.localtime())}')
         print(f'# Image file: {img_file.name}')
+        if bkg_file is not None:
+            print(f'# Background image file: {bkg_file.name}')
         print(f'# Pixelsize: {args.pixelsize} mm')
-        print(f'# Total Flux: {ee.ee_norm:.2f}')
+        print(f'# Total Flux: {ee.ee_norm:.2f} ADU')
         print('# Radius at EE90 (mm): ' + ('Error' if ee90 is None else f'{ee90:.2f}'))
         print('# Model radius at EE90 (mm): ' + ('Error' if model_ee90 is None else f'{model_ee90:.2f}'))
         if args.distance is not None:
@@ -161,6 +166,38 @@ class FullConeFarField(scriptbase.ScriptBase):
             print('# f/# at EE90: ' + ('Error' if fratio90 is None else f'{fratio90:.2f}'))
             print('# Model of f/# at EE90: '
                   + ('Error' if model_fratio90 is None else f'{model_fratio90:.2f}'))
+
+        if args.ofile is None:
+            return
+
+        # Main output file
+        _ofile = Path(args.ofile).resolve()
+        if _ofile.parent != oroot:
+            _ofile = oroot / _ofile.name
+
+        ee_sample, ee_r, ee_fratio, success \
+                = fullcone.ee_to_fratio(ee.radius*_pixelsize, normalized_ee,
+                                        distance=args.distance, smooth=False,
+                                        bkg_lim=None if args.bkg_lim is None
+                                                else args.bkg_lim[0]*ee.circ_p[2]*_pixelsize)
+
+        results = 'Result from fobos_fullcone_farfield script\n' \
+                  f'Written: {time.strftime("%a %d %b %Y %H:%M:%S",time.localtime())}\n\n' \
+                  f'Top-level directory: {img_file.parent}\n\n' \
+                  f'Image:         {img_file.name}\n'
+        if bkg_file is not None:
+            results += f'Background:    {bkg_file.name}\n'
+        results += f'Pixelsize: {args.pixelsize} mm\n'
+        results += '\n' if args.box is None else f'Boxcar: {args.box}\n\n'
+        results += f'S/N Threshold: {args.threshold:.1f}\n' \
+                   f'EE normalization (total flux): {ee.ee_norm:.2f} ADU\n'
+        results += '\n' if args.distance is None else f'Distance: {args.distance:.2f} mm\n'
+        header = results + '\nEE is the fractional inclosed energy\n' \
+                 'R is the radius in mm at the detector plane\n' \
+                 'f is the focal ratio assuming the provided distance\n\n' \
+                 f'{"EE":>6} {"R":>6} {"f":>6}'
+        numpy.savetxt(_ofile, numpy.column_stack((ee_sample, ee_r, ee_fratio)),
+                      fmt=['%8.2f', '%6.2f', '%6.2f'], header=header)
 
 
 
