@@ -24,6 +24,9 @@ class CollimatedFRD(scriptbase.ScriptBase):
         parser.add_argument('-t', '--threshold', default=default_threshold(), type=float,
                             help='S/N threshold that sets the contour used to identify the center '
                                  'of the output ring.')
+        parser.add_argument('-d', '--dist_ref', default='z1', type=str,
+                            help='Image used for distance reference.  Must be z0 (for the close '
+                                 'image) or z1 (for the far image)')
         parser.add_argument('-w', '--window', default=None, type=float,
                             help='Limit the plotted image regions to this times the best-fitting '
                                  'peak of the ring flux distribution.  If None, the full image '
@@ -88,6 +91,9 @@ class CollimatedFRD(scriptbase.ScriptBase):
         from .. import io
         from .. import plot
 
+        if args.dist_ref not in ['z0', 'z1']:
+            raise ValueError(f'Distance reference must be z0 or z1, not {args.dist_ref}.')
+
         # Set the root path
         root = Path(args.root).resolve()
         if not root.exists():
@@ -137,7 +143,10 @@ class CollimatedFRD(scriptbase.ScriptBase):
             z0_peak, z1_peak = z1_peak, z0_peak
             z0_fwhm, z1_fwhm = z1_fwhm, z0_fwhm
 
-        distance = args.sep/(1-z0_rad/z1_rad)
+        z0_distance = args.sep/(z1_rad/z0_rad-1)
+        z1_distance = args.sep/(1-z0_rad/z1_rad)
+
+        ref_distance = z0_distance if args.dist_ref == 'z0' else z1_distance
 
         if len(afiles) > 0:
             nangle = len(afiles)
@@ -151,7 +160,7 @@ class CollimatedFRD(scriptbase.ScriptBase):
                         = collimated.collimated_farfield_output(afiles[i], bkg_file=a_bg[i],
                                                                 threshold=a_thresh[i],
                                                                 pixelsize=args.pixelsize,
-                                                                distance=distance,
+                                                                distance=ref_distance,
                                                                 plot_file=plot_file,
                                                                 window=args.window,
                                                                 gau=args.gau, box=args.box, dr=dr,
@@ -187,7 +196,9 @@ class CollimatedFRD(scriptbase.ScriptBase):
             f.write(f'#     Ring radius:    {z1_rad:.2f}\n')
             f.write(f'#     Ring peak flux: {z1_peak:.2f}\n')
             f.write(f'#     Ring FWHM:      {z1_fwhm:.2f}\n#\n')
-            f.write(f'# Distance from fiber output to z1 image: {distance:.2f} mm\n#\n')
+            f.write(f'# Distance from fiber output to z0 image: {z0_distance:.2f} mm\n#\n')
+            f.write(f'# Distance from fiber output to z1 image: {z1_distance:.2f} mm\n#\n')
+            f.write(f'# Reference distance for angle sweep is: {ref_distance:.2f} mm\n#\n')
             if a_rad is None:
                 f.write(f'# No angle-sweep images to analyze\n')
             else:
