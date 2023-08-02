@@ -265,6 +265,7 @@ def collimated_farfield_output_plot(img_file, img, model, threshold, level, trac
         imgplt = ax.imshow(img, origin='lower', interpolation='nearest', cmap=cmap,
                            vmin=image_lim[0], vmax=image_lim[1], extent=extent)
     ax.scatter(xc, yc, marker='+', color='w', lw=2, zorder=4)
+    ax.plot(trace[:,0], trace[:,1], color='w', lw=0.5)
     cax = fig.add_axes([sx + dx/5, ey-dy-0.02, 3*dx/5, 0.01]) 
     cb = fig.colorbar(imgplt, cax=cax, orientation='horizontal')
 
