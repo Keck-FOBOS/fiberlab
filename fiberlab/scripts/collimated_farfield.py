@@ -37,6 +37,8 @@ class CollimatedFarField(scriptbase.ScriptBase):
                             help='Limit the plotted image regions to this times the best-fitting '
                                  'peak of the ring flux distribution.  If None, the full image '
                                  'is shown.')
+        parser.add_argument('-o', '--oroot', default=str(Path().resolve()), type=str,
+                            help='Directory for output files')
         parser.add_argument('--gau', default=None, type=float,
                             help='Smooth the image with a Gaussian kernel with this sigma before '
                                  'analyzing the results.  No smoothing is performed by default.')
@@ -68,6 +70,10 @@ class CollimatedFarField(scriptbase.ScriptBase):
         from IPython import embed
 
         from .. import collimated
+
+        oroot = Path(args.oroot).resolve()
+        if not oroot.exists():
+            oroot.mkdir(parents=True)
 
         img_file = Path(args.img_file).resolve()
         if not img_file.exists():

@@ -4,8 +4,8 @@
     usage: fiberlab_collimated_farfield [-h] [-b BKG_FILE] [-p PIXELSIZE]
                                         [-d DISTANCE] [-t THRESHOLD] [--show]
                                         [--skip_plots] [--plot_file PLOT_FILE] [-s]
-                                        [-w WINDOW] [--gau GAU] [--box BOX]
-                                        [--model MODEL MODEL MODEL]
+                                        [-w WINDOW] [-o OROOT] [--gau GAU]
+                                        [--box BOX] [--model MODEL MODEL MODEL]
                                         img_file
     
     Calculate results for a collimated FRD test.
@@ -37,6 +37,9 @@
                             Limit the plotted image regions to this times the best-
                             fitting peak of the ring flux distribution. If None, the
                             full image is shown. (default: None)
+      -o OROOT, --oroot OROOT
+                            Directory for output files (default:
+                            /Users/westfall/Work/packages/fobos/fiberlab/docs)
       --gau GAU             Smooth the image with a Gaussian kernel with this sigma
                             before analyzing the results. No smoothing is performed
                             by default. (default: None)

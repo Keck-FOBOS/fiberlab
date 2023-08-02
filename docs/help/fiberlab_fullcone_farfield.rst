@@ -7,6 +7,7 @@
                                       [--smooth] [-c BKG_CLIP BKG_CLIP BKG_CLIP]
                                       [-b BKG_LIM [BKG_LIM ...]] [--bkg_sig BKG_SIG]
                                       [-w WINDOW] [--box BOX] [-o OROOT]
+                                      [--ofile OFILE]
                                       img_file
     
     Calculate results for a full-cone far-field test.
@@ -61,4 +62,7 @@
       -o OROOT, --oroot OROOT
                             Directory for output files (default:
                             /Users/westfall/Work/packages/fobos/fiberlab/docs)
+      --ofile OFILE         Name of the file with discrete samples of the EE and
+                            focal ratio. Not written if no file name is provided.
+                            (default: None)
     
