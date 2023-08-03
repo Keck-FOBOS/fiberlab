@@ -282,7 +282,7 @@ def fullcone_farfield_output_plot(img_file, img, model, trace, circ_p, radius, f
             transform=ax.transAxes)
     ax.text(-0.05, -0.17, f'File: {img_file.name}', ha='left', va='center',
             transform=ax.transAxes)
-    ax.text(-0.05, -0.22, f'EE90 radius: {right:.2f}', ha='left', va='center',
+    ax.text(-0.05, -0.22, f'EE85 radius: {right:.2f}', ha='left', va='center',
             transform=ax.transAxes)
 
     axt = ax.twinx()
