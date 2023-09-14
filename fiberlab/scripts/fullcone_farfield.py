@@ -16,10 +16,15 @@ class FullConeFarField(scriptbase.ScriptBase):
                             help='File with far-field output image from a collimated input')
         parser.add_argument('--bkg_file', default=None, type=str,
                             help='File with only background flux')
-        parser.add_argument('-p', '--pixelsize', default=0.018, type=float,
-                            help='Size of the image camera pixels in mm.')
+        parser.add_argument('-p', '--pixelsize', default=None, type=float,
+                            help='Size of the image camera pixels in mm.  If None, analysis done '
+                                 'using pixel coordinates.')
         parser.add_argument('-d', '--distance', default=None, type=float,
                             help='Distance between the fiber output and the camera detector')
+        parser.add_argument('-l', '--level', default=None, type=float,
+                            help='The count level used to set the contour in the *binned* image.  '
+                                 'I.e., if you use --box, this should be the value after binning '
+                                 'the image.  If this is provided, --threshold is ignored.')
         parser.add_argument('-t', '--threshold', default=1.5, type=float,
                             help='S/N threshold that sets the contour used to identify the center '
                                  'of the output ring.')
@@ -55,7 +60,7 @@ class FullConeFarField(scriptbase.ScriptBase):
                                  'radius of the far-field spot. If None, the full image '
                                  'is shown.')
         parser.add_argument('--box', default=None, type=int,
-                            help='Boxcar average the image before analyzing it')
+                            help='Boxcar sum the image before analyzing it')
         parser.add_argument('-o', '--oroot', default=str(Path().resolve()), type=str,
                             help='Directory for output files')
         parser.add_argument('--ofile', default=None, type=str,
@@ -101,66 +106,67 @@ class FullConeFarField(scriptbase.ScriptBase):
             plot_file = oroot / (f'{img_file.with_suffix("").name}_qa.png'
                                     if args.plot_file is None else args.plot_file)
 
+        if args.bkg_lim is None or len(args.bkg_lim) == 2:            
+            bkg_lim = args.bkg_lim
+        elif len(args.bkg_lim) == 1:
+            bkg_lim = [args.bkg_lim[0], None]
+        else:
+            raise ValueError(f'bkg_lim must be 1 or 2 numbers, you provided {len(args.bkg_lim)}.')
+        
+        threshold = args.threshold if args.level is None else None
+
         print(f'Analyzing {img_file.name}')
-        ee = fullcone.fullcone_farfield_output(img_file, bkg_file=bkg_file,
-                                                  threshold=args.threshold,
-                                                  pixelsize=args.pixelsize, plot_file=plot_file,
-                                                  window=args.window, snr_img=args.snr_img, 
-                                                  clip_iter=int(args.bkg_clip[0]),
-                                                  sigma_lower=args.bkg_clip[1],
-                                                  sigma_upper=args.bkg_clip[2],
-                                                  bkg_lim=args.bkg_lim, bkg_lim_sig=args.bkg_sig,
-                                                  box=args.box)
+        ee = fullcone.fullcone_farfield_output(img_file, bkg_file=bkg_file, level=args.level,
+                                               threshold=threshold, pixelsize=args.pixelsize,
+                                               plot_file=plot_file, window=args.window,
+                                               snr_img=args.snr_img,
+                                               clip_iter=int(args.bkg_clip[0]),
+                                               sigma_lower=args.bkg_clip[1],
+                                               sigma_upper=args.bkg_clip[2], bkg_lim=bkg_lim,
+                                               bkg_lim_sig=args.bkg_sig, box=args.box)
 
-        # Raw values
-        normalized_ee = ee.ee/ee.ee_norm
-        if args.smooth:
-            normalized_ee = contour.iterative_filter(normalized_ee, 301, 2)
-        indx = numpy.where(numpy.diff(normalized_ee) < 0)[0]
-        last = indx[0] if len(indx) > 0 else normalized_ee.size-1
-        if args.bkg_lim is not None:
-            last = min(last, numpy.where(ee.radius > args.bkg_lim[0]*ee.circ_p[2])[0][0])
-
-        # "Model" values
-        normalized_model_ee = ee.model_ee/ee.ee_norm
-        indx = numpy.where(numpy.diff(normalized_model_ee) < 0)[0]
-        model_last = indx[0] if len(indx) > 0 else normalized_model_ee.size-1
-        if args.bkg_lim is not None:
-            model_last = min(model_last,
-                             numpy.where(ee.model_radius > args.bkg_lim[0]*ee.circ_p[2])[0][0])
-
-        _pixelsize = args.pixelsize
+        if args.pixelsize is None:
+            r_units = 'pix'
+            _pixelsize = 1.
+        else:
+            r_units = 'mm'
+            _pixelsize = args.pixelsize
         if args.box is not None:
             _pixelsize *= args.box
 
+        ee90 = None
+        fratio90 = None
         try:
-            ee90 = interpolate.interp1d(normalized_ee[:last],
-                                        ee.radius[:last]*_pixelsize)(0.9)
+            ee90 = ee.ee_interpolator([0.9])[0]
         except:
             warnings.warn('Error interpolated raw EE data.')
-            ee90 = None
-            fratio90 = None
         else:
-            fratio90 = None if args.distance is None else args.distance / 2 / ee90
+            ee90 = contour.convert_radius(ee90, pixelsize=_pixelsize)[1]
+            if args.pixelsize is not None and args.distance is not None:
+                fratio90 = args.distance / 2 / ee90
 
+        model_ee90 = None
+        model_fratio90 = None
         try:
-            model_ee90 = interpolate.interp1d(normalized_model_ee[:model_last],
-                                              ee.model_radius[:model_last]*_pixelsize)(0.9)
+            model_ee90 = ee.model_ee_interpolator([0.9])[0]
         except:
-            warnings.warn('Error interpolated raw EE data.')
-            model_ee90 = None
+            warnings.warn('Error interpolated model EE data.')
         else:
-            model_fratio90 = None if args.distance is None else args.distance / 2 / model_ee90
+            model_ee90 = contour.convert_radius(model_ee90, pixelsize=_pixelsize)[1]
+            if args.pixelsize is not None and args.distance is not None:
+                model_fratio90 = args.distance / 2 / model_ee90
 
         print('# Result from fullcone_farfield script')
         print(f'# Written: {time.strftime("%a %d %b %Y %H:%M:%S",time.localtime())}')
         print(f'# Image file: {img_file.name}')
         if bkg_file is not None:
             print(f'# Background image file: {bkg_file.name}')
-        print(f'# Pixelsize: {args.pixelsize} mm')
+        if args.pixelsize is not None:
+            print(f'# Pixelsize: {args.pixelsize} mm')
         print(f'# Total Flux: {ee.ee_norm:.2f} ADU')
-        print('# Radius at EE90 (mm): ' + ('Error' if ee90 is None else f'{ee90:.2f}'))
-        print('# Model radius at EE90 (mm): ' + ('Error' if model_ee90 is None else f'{model_ee90:.2f}'))
+        print(f'# Radius at EE90 ({r_units}): ' + ('Error' if ee90 is None else f'{ee90:.2f}'))
+        print(f'# Model radius at EE90 ({r_units}): ' 
+              + ('Error' if model_ee90 is None else f'{model_ee90:.2f}'))
         if args.distance is not None:
             print(f'# Distance from fiber output to image: {args.distance:.2f} mm')
             print('# f/# at EE90: ' + ('Error' if fratio90 is None else f'{fratio90:.2f}'))
@@ -178,8 +184,8 @@ class FullConeFarField(scriptbase.ScriptBase):
         ee_sample, ee_r, ee_fratio, success \
                 = fullcone.ee_to_fratio(ee.radius*_pixelsize, normalized_ee,
                                         distance=args.distance, smooth=False,
-                                        bkg_lim=None if args.bkg_lim is None
-                                                else args.bkg_lim[0]*ee.circ_p[2]*_pixelsize)
+                                        bkg_lim=None if bkg_lim is None
+                                                else bkg_lim[0]*ee.circ_p[2]*_pixelsize)
 
         results = 'Result from fobos_fullcone_farfield script\n' \
                   f'Written: {time.strftime("%a %d %b %Y %H:%M:%S",time.localtime())}\n\n' \
@@ -187,14 +193,16 @@ class FullConeFarField(scriptbase.ScriptBase):
                   f'Image:         {img_file.name}\n'
         if bkg_file is not None:
             results += f'Background:    {bkg_file.name}\n'
-        results += f'Pixelsize: {args.pixelsize} mm\n'
+        if args.pixelsize is not None:
+            results += f'Pixelsize: {args.pixelsize} mm\n'
         results += '\n' if args.box is None else f'Boxcar: {args.box}\n\n'
         results += f'S/N Threshold: {args.threshold:.1f}\n' \
                    f'EE normalization (total flux): {ee.ee_norm:.2f} ADU\n'
         results += '\n' if args.distance is None else f'Distance: {args.distance:.2f} mm\n'
         header = results + '\nEE is the fractional inclosed energy\n' \
-                 'R is the radius in mm at the detector plane\n' \
-                 'f is the focal ratio assuming the provided distance\n\n' \
+                 f'R is the radius in {r_units} at the detector plane\n' \
+                 'f is the focal ratio assuming the provided distance ' \
+                    '(all -1 if no distance provided)\n\n' \
                  f'{"EE":>6} {"R":>6} {"f":>6}'
         numpy.savetxt(_ofile, numpy.column_stack((ee_sample, ee_r, ee_fratio)),
                       fmt=['%8.2f', '%6.2f', '%6.2f'], header=header)

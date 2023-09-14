@@ -76,14 +76,19 @@ def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=N
         if img.shape != bkg.shape:
             raise ValueError('Image shape mismatch.')
         img_nobg = img - bkg
-    _pixelsize = pixelsize
+
+    if pixelsize is None:
+        r_units = 'pix'
+        _pixelsize = 1.
+    else:
+        r_units = 'mm'
+        _pixelsize = pixelsize
     if box is not None:
         _pixelsize *= box
 
     # Analyze the image
     ee = EECurve(img_nobg, **kwargs)
 
-    r_units, circ_r = contour.convert_radius(ee.circ_r, pixelsize=_pixelsize, distance=distance)
     radius = contour.convert_radius(ee.radius, pixelsize=_pixelsize, distance=distance)[1]
     model_radius = contour.convert_radius(ee.model_radius, pixelsize=_pixelsize,
                                           distance=distance)[1]
@@ -181,7 +186,7 @@ def fullcone_farfield_output_plot(img_file, img, model, trace, circ_p, radius, f
     rfac = window
     if bkg_lim is not None:
         rfac = 1.1 * bkg_lim[0] if rfac is None else max(1.1 * bkg_lim[0], rfac)
-        if len(bkg_lim) == 2:
+        if bkg_lim[1] is not None:
             rfac = max(1.1 * bkg_lim[1], rfac)
     radius_lim = [0, numpy.amax(radius) if rfac is None else rfac*rc]
 
@@ -273,7 +278,7 @@ def fullcone_farfield_output_plot(img_file, img, model, trace, circ_p, radius, f
     ax.axvline(rc, color='C3', lw=1, ls='--', zorder=6)
     if bkg_lim is not None:
         ax.axvline(bkg_lim[0]*rc, color='0.5', lw=1, ls='--', zorder=6)
-        if len(bkg_lim) == 2:
+        if bkg_lim[1] is not None:
             ax.axvline(bkg_lim[1]*rc, color='0.5', lw=1, ls='--', zorder=6)
 
     ax.text(0.5, -0.08, f'Radius [{r_units}]', ha='center', va='center', transform=ax.transAxes)
@@ -392,6 +397,9 @@ class EECurve:
             When using an image contour to find the output beam center, first
             smooth the image using a Gaussian kernel with this (circular) sigma.
             If None, ``img`` is not smoothed before the contour is determined.
+        level (:obj:`float`, optional):
+            The exact pixel value to use when finding the contour used to set
+            the beam center.
         threshold (:obj:`float`, optional):
             The threshold in units of image background standard deviation used
             to set the contour level.  If None and ``circ_p`` is not provided,
@@ -414,23 +422,27 @@ class EECurve:
             Typically this number should be small: pixels at relatively low
             values should be background pixels, where as pixels above the mean
             have light from the output spot.
-        bkg_lim (:obj:`float`, array-like, optional):
-            Perform a +/- sigma rejection in a background region defined by
-            this object.  If a single value is provided, all pixels beyond the
-            multiple of the beam radius, defined by the last element of
-            ``circ_p``, is included in the rejection.  Instead, a list or numpy
-            array can be used to define an inner (first element) and outer (last
-            element) multiple for the radius.  If None, no additional background
-            region rejection is performed.
+        bkg_lim (array-like, optional):
+            Perform a +/- sigma rejection in a background region defined by this
+            object.  This *must* be a two element array-like object, and the
+            first element cannot be None.  If the last element is None, all
+            pixels beyond that multiple of the beam radius, defined by the last
+            element of ``circ_p``, is included in the rejection.  If the last
+            element is not None, the two elements define an inner (first
+            element) and outer (last element) radius factor for the background
+            region.  If the object is None, no additional background region
+            rejection is performed.
         bkg_lim_sig (:obj:`float`, optional):
             Number of sigma for the background rejection performed based on
             ``bkg_lim``.
     """
-    def __init__(self, img, mask=None, circ_p=None, smooth=None, threshold=None, clip_iter=10,
-                 sigma_lower=100., sigma_upper=3., bkg_lim=None, bkg_lim_sig=3.):
+    def __init__(self, img, mask=None, circ_p=None, smooth=None, level=None, threshold=None,
+                 clip_iter=10, sigma_lower=100., sigma_upper=3., bkg_lim=None, bkg_lim_sig=3.):
 
         self.img = img.copy()
-        self.gpm = None if mask is None else numpy.logical_not(mask)
+        # Input gpm is kept for iteration purposes
+        self.inp_gpm = None if mask is None else numpy.logical_not(mask)
+        self.gpm = None if mask is None else self.inp_gpm.copy()
 
         # Get the bounding contour of the image spot
         if circ_p is None:
@@ -445,8 +457,9 @@ class EECurve:
             self.threshold = default_threshold() if threshold is None else threshold
             self.level, self.trace, self.trace_sig, self.bkg \
                     = contour.get_contour(numpy.ma.MaskedArray(_img, mask=mask),
-                                          threshold=self.threshold, clip_iter=clip_iter,
-                                          sigma_lower=sigma_lower, sigma_upper=sigma_upper)
+                                          level=level, threshold=self.threshold,
+                                          clip_iter=clip_iter, sigma_lower=sigma_lower,
+                                          sigma_upper=sigma_upper)
             # Fit a circle to the contour
             self.circ_p = contour.Circle(self.trace[:,0], self.trace[:,1]).fit()
             self.img -= self.bkg
@@ -468,21 +481,19 @@ class EECurve:
         self.bkg_lim = bkg_lim
         if self.bkg_lim is not None:
             # Select the pixels in the background region
-            if isinstance(self.bkg_lim, list):
+            if self.bkg_lim[1] is None:
+                indx = self.circ_r > self.circ_p[2] * self.bkg_lim[0]
+            else:
                 indx = (self.circ_r > self.circ_p[2] * self.bkg_lim[0]) \
                             & (self.circ_r < self.circ_p[2] * self.bkg_lim[1])
-            else:
-                indx = self.circ_r > self.circ_p[2] * self.bkg_lim
             if self.gpm is not None:
                 indx &= self.gpm
             # Clip the pixel values
-            clipped = sigma_clip(self.img[indx], sigma=bkg_lim_sig)
+            clipped = sigma_clip(self.img[indx] - self.bkg, sigma=bkg_lim_sig)
             # Get the adjusted background
             bkg_adj = numpy.ma.median(clipped)
             # Add it to the previous background determination
             self.bkg += bkg_adj
-            # And subtract it from the image
-            self.img -= bkg_adj
             # Add the clipped pixels to the mask
             if mask is None:
                 mask = numpy.zeros(self.img.shape, dtype=bool)
@@ -491,15 +502,13 @@ class EECurve:
                 mask[indx] |= numpy.ma.getmaskarray(clipped)
             self.gpm = numpy.logical_not(mask)
 
-            # Also mask pixels at *all* radii beyond the inner radius (but
-            # they're not included in the background).  This removes them from
-            # consideration in the EE curve, but excludes them from the
-            # background calculation.
-            if isinstance(self.bkg_lim, list):
-                indx = self.gpm & (self.circ_r > self.circ_p[2] * self.bkg_lim[0])
-                clipped = sigma_clip(self.img[indx], sigma=3.)
-                mask[indx] |= numpy.ma.getmaskarray(clipped)
-                self.gpm = numpy.logical_not(mask)
+            # Also mask pixels at *all* radii beyond the inner radius, used to
+            # reject significant outliers in the background region and beyond
+            # from being included in the EE calculation.
+            indx = self.gpm & (self.circ_r > self.circ_p[2] * self.bkg_lim[0])
+            clipped = sigma_clip(self.img[indx] - self.bkg, sigma=3.)
+            mask[indx] |= numpy.ma.getmaskarray(clipped)
+            self.gpm = numpy.logical_not(mask)
 
         # Only select the unmasked pixels when constructing the EE curve
         if self.gpm is None:
@@ -508,6 +517,7 @@ class EECurve:
         else:
             self.radius = self.circ_r[self.gpm].ravel()
             self.flux = self.img[self.gpm].ravel()
+        self.flux -= self.bkg
 
         # Construct 1D vectors with the data sorted by radius:
         srt = numpy.argsort(self.radius)
@@ -521,15 +531,17 @@ class EECurve:
         #   - Build model
         self.build_model()
 
+        # Initialize interpolator to None
+        self._ee_interpolator = None
+        self._model_ee_interpolator = None
+
     def get_ee_norm(self):
         if self.bkg_lim is None:
             self.ee_norm = self.ee[-1]
-        elif isinstance(self.bkg_lim, list):
-            indx = (self.radius > self.bkg_lim[0]*self.circ_p[2]) \
-                        & (self.radius < self.bkg_lim[1]*self.circ_p[2])
-            self.ee_norm = numpy.median(self.ee[indx])
         else:
-            indx = self.radius > self.circ_p[2] * self.bkg_lim
+            indx = self.radius > self.circ_p[2] * self.bkg_lim[0]
+            if self.bkg_lim[1] is not None:
+                indx &= (self.radius < self.bkg_lim[1]*self.circ_p[2])
             self.ee_norm = numpy.median(self.ee[indx])
 
     def build_model(self):
@@ -547,7 +559,33 @@ class EECurve:
         # Create the model image
         self.model_img = interpolate.interp1d(self.model_radius, self.model_flux,
                                 bounds_error=False,
-                                fill_value=(self.model_flux[0], self.model_flux[-1]))(self.circ_r)
+                                fill_value=(self.model_flux[0], self.model_flux[-1])
+                                )(self.circ_r) + self.bkg
+
+    @property
+    def ee_interpolator(self):
+        if self._ee_interpolator is None:       
+            self._ee_interpolator = self.build_interpolator()
+        return self._ee_interpolator
+
+    @property
+    def model_ee_interpolator(self):
+        if self._model_ee_interpolator is None:       
+            self._model_ee_interpolator = self.build_interpolator(model=True, smooth=False)
+        return self._model_ee_interpolator
+
+    def build_interpolator(self, model=False, smooth=True):
+        normalized_ee = (self.model_ee if model else self.ee)/self.ee_norm
+        radius = self.model_radius if model else self.radius
+        if smooth:
+            normalized_ee = contour.iterative_filter(normalized_ee, 301, 2)
+        indx = numpy.where(numpy.diff(normalized_ee) < 0)[0]
+        last = indx[0] if len(indx) > 0 else normalized_ee.size-1
+        if self.bkg_lim is not None:
+            indx = numpy.where(radius > self.bkg_lim[0]*self.circ_p[2])[0]
+            if len(indx) > 0:
+                last = min(last, indx[0])
+        return interpolate.interp1d(normalized_ee[:last], radius[:last])
 
 
 def calculate_fratio(z0_radius, z0_ee, z1_radius, z1_ee, sep, smooth=False, z0_bkg_lim=None,

@@ -5,6 +5,7 @@ from . import scriptbase
 from . import browse_images
 from . import collimated_farfield
 from . import collimated_FRD
+from . import farfield_inspector
 from . import fullcone_farfield
 from . import fullcone_ee_fratio
 from . import fullcone_throughput

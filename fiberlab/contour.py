@@ -230,32 +230,80 @@ class ContourError(Exception):
     pass
 
 
-# TODO: Allow to smooth the image before finding the contour
-def get_contour(img, threshold=None, bg=None, sig=None, clip_iter=10, sigma_lower=100.,
+# TODO:
+#   - Allow to smooth the image before finding the contour
+#   - Provide the contour level directly
+
+def get_contour(img, level=None, threshold=None, bg=None, sig=None, clip_iter=10, sigma_lower=100.,
                 sigma_upper=3.):
+    """
+    Return a single coherent contour of an image that contains the most number
+    of contour points (as a proxy for the one that covers the most area).
 
-    # Compute the background flux, the standard deviation in the
-    # background, and the number of rejected pixels
-    if sig is None:
-        if bg is None:
-            bkg, sig, nrej = get_bg(img, clip_iter=clip_iter, sigma_lower=sigma_lower,
-                                    sigma_upper=sigma_upper)
+    If ``sig`` and ``bg`` are None, ``img`` is used with :func:`get_bg` to get
+    both (using the clipping arguments provided).  If ``sig`` is None, but
+    ``bg`` is provided, it *must* be a `numpy.ndarray`_ and :func:`get_bg` is
+    used to determine ``sig`` and a constant background.  If both ``sig`` and
+    ``bg`` are provided, ``bg`` is subtracted directly from ``img``.
+
+    Args:
+        img (`numpy.ndarray`_):
+            Image to contour
+        level (float, optional):
+            The exact level to contour.  If provided, all other keyword values
+            are ignored.
+        threshold (float, optional):
+            The threshold in units of background sigma used to set the contour
+            level.
+        bg (float, `numpy.ndarray`_, optional):
+            A background level to subtract.  It can be anything that broadcasts
+            to the shape of ``img``.  
+        sig (float, optional):
+            The (assumed) constant noise level in the background of the image.  
+        clip_iter (int, optional):
+            Number of clipping iterations to use when measuring the background
+            and noise level.  This is only used if sig or bg is None.  See
+            :fun:`get_bg`.
+        sigma_lower (float, optional):
+            Lower sigma rejection limit.  This is only used if sig or bg is
+            None.  See :fun:`get_bg`.
+        sigma_upper (float, optional):
+            Upper sigma rejection limit.  This is only used if sig or bg is
+            None.  See :fun:`get_bg`.
+
+    Returns:
+        tuple: The contour level, the contour coordinates, the noise level, and
+        the background level.  The noise level will be None if the level is
+        provided directly.
+    """
+    if level is None:
+        # Compute the background flux, the standard deviation in the
+        # background, and the number of rejected pixels
+        if sig is None:
+            if bg is None:
+                bkg, sig, nrej = get_bg(img, clip_iter=clip_iter, sigma_lower=sigma_lower,
+                                        sigma_upper=sigma_upper)
+            else:
+                bkg, sig, nrej = get_bg(bg, clip_iter=clip_iter, sigma_lower=sigma_lower,
+                                        sigma_upper=sigma_upper)
         else:
-            bkg, sig, nrej = get_bg(bg, clip_iter=clip_iter, sigma_lower=sigma_lower,
-                                    sigma_upper=sigma_upper)
-    else:
-        bkg = 0.
+            bkg = 0. if bg is None else bg
 
-    # Find the contour matching the defined sigma threshold
-    img_bksub = img - bkg
-    if threshold is None:
-        threshold = 2 * numpy.ma.std(img_bksub / sig)
-    level = threshold*sig
+        # Find the contour matching the defined sigma threshold
+        img_bksub = img - bkg
+        if threshold is None:
+            threshold = 2 * numpy.ma.std(img_bksub / sig)
+        _level = threshold*sig
+    else:
+        bkg = 0. if bg is None else bg
+        img_bksub = img - bkg
+        _level = level
+        sig = None
 
     # Transpose to match the numpy/matplotlib convention
     _img_bksub = img_bksub.filled(0.0) if isinstance(img_bksub, numpy.ma.MaskedArray) \
                     else img_bksub
-    contour = measure.find_contours(_img_bksub.T, level=level)
+    contour = measure.find_contours(_img_bksub.T, level=_level)
     if len(contour) == 0:
         raise ContourError('no contours found')
 
@@ -267,7 +315,7 @@ def get_contour(img, threshold=None, bg=None, sig=None, clip_iter=10, sigma_lowe
             nc = p.shape[0]
             ci = i
 
-    return level, contour[ci], sig, bkg
+    return _level, contour[ci], sig, bkg
 
 
 def growth_lim(a, lim, fac=1.0, midpoint=None, default=[0., 1.]):
