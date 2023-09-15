@@ -2,8 +2,8 @@
 
     $ fiberlab_collimated_FRD -h
     usage: fiberlab_collimated_FRD [-h] [-p PIXELSIZE] [-s SEP] [-t THRESHOLD]
-                                   [-w WINDOW] [-o OROOT] [-f FILES] [-q]
-                                   [--gau GAU] [--box BOX]
+                                   [-d DIST_REF] [-w WINDOW] [-o OROOT] [-f FILES]
+                                   [-q] [--gau GAU] [--box BOX]
                                    [--model MODEL MODEL MODEL] [--summary [SUMMARY]]
                                    [--na NA]
                                    root ofile
@@ -24,6 +24,9 @@
       -t THRESHOLD, --threshold THRESHOLD
                             S/N threshold that sets the contour used to identify the
                             center of the output ring. (default: 1.5)
+      -d DIST_REF, --dist_ref DIST_REF
+                            Image used for distance reference. Must be z0 (for the
+                            close image) or z1 (for the far image) (default: z1)
       -w WINDOW, --window WINDOW
                             Limit the plotted image regions to this times the best-
                             fitting peak of the ring flux distribution. If None, the

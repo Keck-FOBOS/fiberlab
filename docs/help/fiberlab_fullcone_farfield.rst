@@ -2,9 +2,10 @@
 
     $ fiberlab_fullcone_farfield -h
     usage: fiberlab_fullcone_farfield [-h] [--bkg_file BKG_FILE] [-p PIXELSIZE]
-                                      [-d DISTANCE] [-t THRESHOLD] [--show]
-                                      [--skip_plots] [--plot_file PLOT_FILE] [-s]
-                                      [--smooth] [-c BKG_CLIP BKG_CLIP BKG_CLIP]
+                                      [-d DISTANCE] [-l LEVEL] [-t THRESHOLD]
+                                      [--show] [--skip_plots]
+                                      [--plot_file PLOT_FILE] [-s] [--smooth]
+                                      [-c BKG_CLIP BKG_CLIP BKG_CLIP]
                                       [-b BKG_LIM [BKG_LIM ...]] [--bkg_sig BKG_SIG]
                                       [-w WINDOW] [--box BOX] [-o OROOT]
                                       [--ofile OFILE]
@@ -19,10 +20,16 @@
       -h, --help            show this help message and exit
       --bkg_file BKG_FILE   File with only background flux (default: None)
       -p PIXELSIZE, --pixelsize PIXELSIZE
-                            Size of the image camera pixels in mm. (default: 0.018)
+                            Size of the image camera pixels in mm. If None, analysis
+                            done using pixel coordinates. (default: None)
       -d DISTANCE, --distance DISTANCE
                             Distance between the fiber output and the camera
                             detector (default: None)
+      -l LEVEL, --level LEVEL
+                            The count level used to set the contour in the *binned*
+                            image. I.e., if you use --box, this should be the value
+                            after binning the image. If this is provided,
+                            --threshold is ignored. (default: None)
       -t THRESHOLD, --threshold THRESHOLD
                             S/N threshold that sets the contour used to identify the
                             center of the output ring. (default: 1.5)
@@ -57,8 +64,7 @@
                             Limit the plotted image regions to this times the
                             fiducial radius of the far-field spot. If None, the full
                             image is shown. (default: None)
-      --box BOX             Boxcar average the image before analyzing it (default:
-                            None)
+      --box BOX             Boxcar sum the image before analyzing it (default: None)
       -o OROOT, --oroot OROOT
                             Directory for output files (default:
                             /Users/westfall/Work/packages/fobos/fiberlab/docs)
