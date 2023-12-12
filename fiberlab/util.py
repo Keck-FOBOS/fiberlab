@@ -179,3 +179,15 @@ def point_inside_polygon(polygon, point):
     return numpy.absolute(polygon_winding_number(polygon, point)) == 1
 
 
+def polygon_area(x, y):
+    """
+    Return the area of an arbitrary polygon.
+
+    Thanks to: 
+    https://stackoverflow.com/questions/24467972/calculate-area-of-polygon-given-x-y-coordinates
+    """
+    correction = x[-1] * y[0] - y[-1]* x[0]
+    main_area = numpy.dot(x[:-1], y[1:]) - numpy.dot(y[:-1], x[1:])
+    return 0.5*numpy.absolute(main_area + correction)
+
+

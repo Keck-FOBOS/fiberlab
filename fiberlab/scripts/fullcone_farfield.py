@@ -182,7 +182,7 @@ class FullConeFarField(scriptbase.ScriptBase):
             _ofile = oroot / _ofile.name
 
         ee_sample, ee_r, ee_fratio, success \
-                = fullcone.ee_to_fratio(ee.radius*_pixelsize, normalized_ee,
+                = fullcone.ee_to_fratio(ee.radius*_pixelsize, ee.ee/ee.ee_norm,
                                         distance=args.distance, smooth=False,
                                         bkg_lim=None if bkg_lim is None
                                                 else bkg_lim[0]*ee.circ_p[2]*_pixelsize)

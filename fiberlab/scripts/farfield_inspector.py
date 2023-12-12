@@ -2,15 +2,13 @@
 Script that produces results for a collimated FRD test.
 """ 
 
-import time
 from pathlib import Path
 import warnings
 
 from IPython import embed
 
 import numpy
-from scipy import interpolate
-from matplotlib import pyplot, rc, ticker, widgets, _api
+from matplotlib import pyplot, rc, ticker, widgets
 from matplotlib.backend_bases import MouseButton
 
 from .. import fullcone
@@ -221,6 +219,7 @@ class FarFieldPointer:
         self.img_pointer.register('b', self.set_bkg_lower_image)
         self.img_pointer.register('B', self.set_bkg_upper_image)
         self.img_pointer.register('D', self.rm_bkg)
+        self.img_pointer.register('C', self.print_contour)
 
         # NOTE: Have to use ee_plt here because it is the "top" axis, overlaying
         # the flux axis.  This is okay because we only care about the radius
@@ -278,6 +277,14 @@ class FarFieldPointer:
             self.bkg_hi_line.remove()
             self.bkg_hi_line = None
         self.update()
+
+    def print_contour(self, pos):
+        filename = input('File for contour data: ')
+        if len(filename) == 0:
+            for t in self.ee.trace:
+                print(f'{t[0]:7.2f} {t[1]:7.2f}')
+            return
+        numpy.savetxt(filename, self.ee.trace, fmt=' %7.2f %7.2f')
 
     def update(self):
         if self.bkg_lim is not None and self.bkg_lim[1] is not None \

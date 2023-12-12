@@ -70,7 +70,7 @@ class Circle:
 
     @staticmethod
     def sample(p, n=1000):
-        theta = numpy.linspace(-numpy.pi, numpy.pi, 1000)
+        theta = numpy.linspace(-numpy.pi, numpy.pi, n)
         return p[2]*numpy.cos(theta) + p[0], p[2]*numpy.sin(theta) + p[1]
 
     @staticmethod
@@ -78,6 +78,10 @@ class Circle:
         _x = x - p[0]
         _y = y - p[1]
         return numpy.sqrt(_x**2 + _y**2), numpy.arctan2(_y, _x)
+    
+    @staticmethod
+    def area(p):
+        return numpy.pi * p[2]**2
 
 
 
@@ -128,12 +132,16 @@ class Ellipse:
 
     @staticmethod
     def sample(p, n=1000):
-        theta = numpy.linspace(-numpy.pi, numpy.pi, 1000)
+        theta = numpy.linspace(-numpy.pi, numpy.pi, n)
         _x = p[4] * numpy.cos(theta)
         _y = p[3] * p[4] * numpy.sin(theta)
         cosa = numpy.cos(numpy.radians(p[2]))
         sina = numpy.sin(numpy.radians(p[2]))
         return _x * cosa + _y * sina + p[0], - _x * sina + _y * cosa + p[1]
+    
+    @staticmethod
+    def area(p):
+        return numpy.pi * p[3] * p[4]**2
 
     @staticmethod
     def polar(x, y, p):
