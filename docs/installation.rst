@@ -9,9 +9,9 @@ Installation
 Install Python 3
 ----------------
 
-The FOBOS FiberLab is supported for Python 3 only. To install Python,
-you can do so along with a full package manager, like `Anaconda`_, or
-you can install python 3 directly from `python.org`_.
+The FOBOS FiberLab package is supported for Python 3 only. To install Python,
+you can do so along with a full package manager, like `Anaconda`_, or you can
+install python 3 directly from `python.org`_.
 
 Python environment
 ------------------
@@ -29,12 +29,12 @@ Clone the repo
 To download the software and associated data, clone the GitHub repo by
 executing:
 
-    .. code-block:: console
+.. code-block:: console
 
-        git clone https://github.com/Keck-FOBOS/fiberlab.git
+    git clone https://github.com/Keck-FOBOS/fiberlab.git
 
-This will create a new ``fiberlab`` directory in the directory where the command
-is executed.
+This will create a ``fiberlab`` directory in the directory where the command is
+executed.
 
 Install from source
 -------------------
@@ -46,7 +46,7 @@ met is to, from the top-level directory, run:
 
     pip install -e .
 
-Importantly, note that this will upgrade/install FOBOS producer python package
+Importantly, note that this will upgrade/install the relevant python package
 dependencies, which is why it's useful to isolate the code to its own
 environment.  To include the development dependencies, run:
 
@@ -54,10 +54,11 @@ environment.  To include the development dependencies, run:
 
     pip install -e ".[dev]"
 
-Note that use of the quotes is shell dependent; e.g., you need them for zshell
-(the current default Mac shell), but they'll cause a fault in bash.
+Note that use of the quotes is shell dependent; e.g., you need them for
+``zshell`` (the current default Mac shell), but they'll cause a fault in
+``bash``.
 
-Installation in this way should also means that changes made to the code
+Installation in this way should also mean that changes made to the code
 should take effect immediately when re-running code.
 
 Uninstall
@@ -76,7 +77,7 @@ Test your installation
 
 .. warning::
 
-    Tests do not currently exist!
+    Tests do not currently exist!  Text here is a placeholder.
 
 If you've installed with the developer dependencies, you can test the
 installation using ``pytest``:
