@@ -271,13 +271,13 @@ def get_contour(img, level=None, threshold=None, bg=None, sig=None, clip_iter=10
         clip_iter (int, optional):
             Number of clipping iterations to use when measuring the background
             and noise level.  This is only used if sig or bg is None.  See
-            :fun:`get_bg`.
+            :func:`get_bg`.
         sigma_lower (float, optional):
             Lower sigma rejection limit.  This is only used if sig or bg is
-            None.  See :fun:`get_bg`.
+            None.  See :func:`get_bg`.
         sigma_upper (float, optional):
             Upper sigma rejection limit.  This is only used if sig or bg is
-            None.  See :fun:`get_bg`.
+            None.  See :func:`get_bg`.
 
     Returns:
         tuple: The contour level, the contour coordinates, the noise level, and
