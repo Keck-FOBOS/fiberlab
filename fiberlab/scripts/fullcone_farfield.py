@@ -162,8 +162,11 @@ class FullConeFarField(scriptbase.ScriptBase):
         if bkg_file is not None:
             print(f'# Background image file: {bkg_file.name}')
         if args.pixelsize is not None:
-            print(f'# Pixelsize: {args.pixelsize} mm')
+            print(f'# Pixelsize (unbinned): {args.pixelsize} mm')
+        if args.box is not None:
+            print(f'# Pixelsize (binned): {_pixelsize} {r_units}')
         print(f'# Total Flux: {ee.ee_norm:.2f} ADU')
+        print(f'# Center ({r_units}): {ee.circ_p[0]*_pixelsize:.3f} {ee.circ_p[1]*_pixelsize:.3f}')
         print(f'# Radius at EE90 ({r_units}): ' + ('Error' if ee90 is None else f'{ee90:.2f}'))
         print(f'# Model radius at EE90 ({r_units}): ' 
               + ('Error' if model_ee90 is None else f'{model_ee90:.2f}'))
@@ -194,18 +197,31 @@ class FullConeFarField(scriptbase.ScriptBase):
         if bkg_file is not None:
             results += f'Background:    {bkg_file.name}\n'
         if args.pixelsize is not None:
-            results += f'Pixelsize: {args.pixelsize} mm\n'
-        results += '\n' if args.box is None else f'Boxcar: {args.box}\n\n'
-        results += f'S/N Threshold: {args.threshold:.1f}\n' \
-                   f'EE normalization (total flux): {ee.ee_norm:.2f} ADU\n'
-        results += '\n' if args.distance is None else f'Distance: {args.distance:.2f} mm\n'
+            results += f'Pixelsize (unbinned): {args.pixelsize} mm\n'
+
+        if args.box is not None:
+            results += f'Pixelsize (binned): {_pixelsize} {r_units}\n'
+        results += f'Total Flux: {ee.ee_norm:.2f} ADU\n'
+        results += f'Center ({r_units}): {ee.circ_p[0]*_pixelsize:.3f} ' \
+                    f'{ee.circ_p[1]*_pixelsize:.3f}\n'
+        results += f'Radius at EE90 ({r_units}): ' \
+                    + ('Error' if ee90 is None else f'{ee90:.2f}') + '\n'
+        results += f'Model radius at EE90 ({r_units}): ' \
+                    + ('Error' if model_ee90 is None else f'{model_ee90:.2f}') + '\n'
+        if args.distance is not None:
+            results += f'Distance from fiber output to image: {args.distance:.2f} mm\n'
+            results += 'f/# at EE90: ' + ('Error' if fratio90 is None else f'{fratio90:.2f}') \
+                        + '\n'
+            results += '# Model of f/# at EE90: ' \
+                            + ('Error' if model_fratio90 is None else f'{model_fratio90:.2f}') \
+                            + '\n'
         header = results + '\nEE is the fractional inclosed energy\n' \
                  f'R is the radius in {r_units} at the detector plane\n' \
                  'f is the focal ratio assuming the provided distance ' \
                     '(all -1 if no distance provided)\n\n' \
-                 f'{"EE":>6} {"R":>6} {"f":>6}'
+                 f'{"EE":>8} {"R":>8} {"f":>8}'
         numpy.savetxt(_ofile, numpy.column_stack((ee_sample, ee_r, ee_fratio)),
-                      fmt=['%8.2f', '%6.2f', '%6.2f'], header=header)
+                      fmt=['%10.4f', '%8.4f', '%8.4f'], header=header)
 
 
 
