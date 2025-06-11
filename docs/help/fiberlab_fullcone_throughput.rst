@@ -10,11 +10,11 @@
       inp_img               File with an image of the input beam
       out_img               File with an image of the output beam
     
-    optional arguments:
+    options:
       -h, --help            show this help message and exit
-      -b BKG_IMG, --bkg_img BKG_IMG
+      -b, --bkg_img BKG_IMG
                             File with only background flux (default: None)
-      -t THRESHOLD, --threshold THRESHOLD
+      -t, --threshold THRESHOLD
                             S/N threshold that sets the contour used to identify the
                             center of the output ring. (default: 1.5)
     

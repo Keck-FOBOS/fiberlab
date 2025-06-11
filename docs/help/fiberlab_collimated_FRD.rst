@@ -14,28 +14,25 @@
       root                  Directory with output files.
       ofile                 Output file for measurements
     
-    optional arguments:
+    options:
       -h, --help            show this help message and exit
-      -p PIXELSIZE, --pixelsize PIXELSIZE
+      -p, --pixelsize PIXELSIZE
                             Size of the image camera pixels in mm. (default: 0.018)
-      -s SEP, --sep SEP     Known separation (in mm) between the "z" images used to
+      -s, --sep SEP         Known separation (in mm) between the "z" images used to
                             calculate the distance from the fiber output to the main
                             imaging position. (default: 3.81)
-      -t THRESHOLD, --threshold THRESHOLD
+      -t, --threshold THRESHOLD
                             S/N threshold that sets the contour used to identify the
                             center of the output ring. (default: 1.5)
-      -d DIST_REF, --dist_ref DIST_REF
+      -d, --dist_ref DIST_REF
                             Image used for distance reference. Must be z0 (for the
                             close image) or z1 (for the far image) (default: z1)
-      -w WINDOW, --window WINDOW
-                            Limit the plotted image regions to this times the best-
+      -w, --window WINDOW   Limit the plotted image regions to this times the best-
                             fitting peak of the ring flux distribution. If None, the
                             full image is shown. (default: None)
-      -o OROOT, --oroot OROOT
-                            Directory for output files (default:
+      -o, --oroot OROOT     Directory for output files (default:
                             /Users/westfall/Work/packages/fobos/fiberlab/docs)
-      -f FILES, --files FILES
-                            Name of a file that provides 2, 3, or 4 columns: (1) the
+      -f, --files FILES     Name of a file that provides 2, 3, or 4 columns: (1) the
                             files to analyze, (2) the background image to use for
                             each file, (3) the threshold to use for each file, and
                             (4) the image designation. If this file is provided, any

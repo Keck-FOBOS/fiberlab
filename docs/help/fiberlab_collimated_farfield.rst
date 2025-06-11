@@ -13,16 +13,16 @@
     positional arguments:
       img_file              File with far-field output image from a collimated input
     
-    optional arguments:
+    options:
       -h, --help            show this help message and exit
-      -b BKG_FILE, --bkg_file BKG_FILE
+      -b, --bkg_file BKG_FILE
                             File with only background flux (default: None)
-      -p PIXELSIZE, --pixelsize PIXELSIZE
+      -p, --pixelsize PIXELSIZE
                             Size of the image camera pixels in mm. (default: 0.018)
-      -d DISTANCE, --distance DISTANCE
+      -d, --distance DISTANCE
                             Distance between the fiber output and the camera
                             detector (default: None)
-      -t THRESHOLD, --threshold THRESHOLD
+      -t, --threshold THRESHOLD
                             S/N threshold that sets the contour used to identify the
                             center of the output ring. (default: 1.5)
       --show                Display the QA plot in a window; do not write it to a
@@ -33,12 +33,10 @@
                             of input image file. (default: None)
       -s, --snr_img         If creating the QA plot, show the estimated S/N of the
                             data instead of the counts. (default: False)
-      -w WINDOW, --window WINDOW
-                            Limit the plotted image regions to this times the best-
+      -w, --window WINDOW   Limit the plotted image regions to this times the best-
                             fitting peak of the ring flux distribution. If None, the
                             full image is shown. (default: None)
-      -o OROOT, --oroot OROOT
-                            Directory for output files (default:
+      -o, --oroot OROOT     Directory for output files (default:
                             /Users/westfall/Work/packages/fobos/fiberlab/docs)
       --gau GAU             Smooth the image with a Gaussian kernel with this sigma
                             before analyzing the results. No smoothing is performed

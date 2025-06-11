@@ -21,7 +21,7 @@ The script usage can be displayed by calling the script with the
 
 .. include:: help/fiberlab_browse_images.rst
 
-The script trolls through the directory you point it two and shows you the
+The script trolls through the directory you point it to and shows you the
 following image:
 
 .. figure:: figures/browse_example.png

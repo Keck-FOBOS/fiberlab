@@ -18,38 +18,38 @@
       z1                    Far-field image taken farther from the output beam.
       ofile                 Output file for measurements
     
-    optional arguments:
+    options:
       -h, --help            show this help message and exit
-      -k BACKGROUND [BACKGROUND ...], --background BACKGROUND [BACKGROUND ...]
+      -k, --background BACKGROUND [BACKGROUND ...]
                             One or two files with bench images to use as
                             backgrounds. If None, not backgrounds are used. If one
                             file, this background is subtracted from both input
                             images. (default: None)
-      -p PIXELSIZE, --pixelsize PIXELSIZE
+      -p, --pixelsize PIXELSIZE
                             Size of the image camera pixels in mm. (default: 0.018)
-      -s SEP, --sep SEP     Known separation (in mm) between the "z" images used to
+      -s, --sep SEP         Known separation (in mm) between the "z" images used to
                             calculate the distance from the fiber output to the main
                             imaging position. (default: 3.82)
-      -l LEVEL [LEVEL ...], --level LEVEL [LEVEL ...]
+      -l, --level LEVEL [LEVEL ...]
                             The count level used to set the contour in the *binned*
                             image. I.e., if you use --box, this should be the value
                             after binning the image. If this is provided,
                             --threshold is ignored. If one value is provided, the
                             same level is used for both images. (default: None)
-      -t THRESHOLD [THRESHOLD ...], --threshold THRESHOLD [THRESHOLD ...]
+      -t, --threshold THRESHOLD [THRESHOLD ...]
                             S/N threshold that sets the contour used to identify the
                             center of the output ring. Ignored if --level is
                             provided. If one value is provided, the same threshold
                             is used for both images. (default: [3.0])
       --smooth              Smooth the EE curve to limit interpolation errors
                             (default: False)
-      -c BKG_CLIP BKG_CLIP BKG_CLIP, --bkg_clip BKG_CLIP BKG_CLIP BKG_CLIP
+      -c, --bkg_clip BKG_CLIP BKG_CLIP BKG_CLIP
                             Clipping parameters used for setting the contour
                             threshold. Three numbers must be provided: (1) the
                             number of clipping iterations, (2) the lower rejection
                             threshold, and (3) the higher rejection threshold.
                             (default: [10.0, 100.0, 3.0])
-      -b BKG_LIM [BKG_LIM ...], --bkg_lim BKG_LIM [BKG_LIM ...]
+      -b, --bkg_lim BKG_LIM [BKG_LIM ...]
                             One or two multiples of the spot radius (as defined by
                             the fitted radius of the contour used to define spot
                             center) to use for the background estimate. If none, the
@@ -60,12 +60,10 @@
                             images. (default: None)
       --bkg_sig BKG_SIG     Sigma clipping level for the background measurement and
                             masking. (default: 3.0)
-      -w WINDOW, --window WINDOW
-                            Limit the plotted image regions to this times the
+      -w, --window WINDOW   Limit the plotted image regions to this times the
                             fiducial radius of the far-field spot. If None, the full
                             image is shown. (default: None)
-      -o OROOT, --oroot OROOT
-                            Directory for output files (default:
+      -o, --oroot OROOT     Directory for output files (default:
                             /Users/westfall/Work/packages/fobos/fiberlab/docs)
       --skip_plots          Only create the output data file and skip the plots.
                             (default: False)

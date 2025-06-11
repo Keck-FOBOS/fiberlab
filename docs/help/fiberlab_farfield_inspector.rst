@@ -10,12 +10,12 @@
     positional arguments:
       img_file              File with far-field output image from a collimated input
     
-    optional arguments:
+    options:
       -h, --help            show this help message and exit
       --bkg_file BKG_FILE   File with only background flux (default: None)
-      -p PIXELSIZE, --pixelsize PIXELSIZE
+      -p, --pixelsize PIXELSIZE
                             Size of the image camera pixels in mm. (default: None)
-      -d DISTANCE, --distance DISTANCE
+      -d, --distance DISTANCE
                             Distance between the fiber output and the camera
                             detector (default: None)
       --smooth              Smooth the EE curve to limit interpolation errors

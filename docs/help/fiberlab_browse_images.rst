@@ -10,16 +10,13 @@
     positional arguments:
       root                  Directory with output files.
     
-    optional arguments:
+    options:
       -h, --help            show this help message and exit
-      -i IMAGE, --image IMAGE
-                            Name of single file to show. If provided, -s and -e
+      -i, --image IMAGE     Name of single file to show. If provided, -s and -e
                             arguments are ignored. (default: None)
-      -s SEARCH, --search SEARCH
-                            Search string for image names (default: None)
-      -e EXT, --ext EXT     Image extension (default: .fit)
-      -z ZLIM ZLIM, --zlim ZLIM ZLIM
-                            The upper and lower values to use for the image plot
+      -s, --search SEARCH   Search string for image names (default: None)
+      -e, --ext EXT         Image extension (default: .fit)
+      -z, --zlim ZLIM ZLIM  The upper and lower values to use for the image plot
                             limits. Default is to plot +/- 5 sigma around the image
                             mean. (default: None)
     
