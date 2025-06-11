@@ -400,6 +400,9 @@ def farfield_inspector(img_file, bkg_file=None, pixelsize=None, distance=None, s
             raise ValueError('Image shape mismatch.')
         img = numpy.ma.MaskedArray(img - bkg)
 
+#    bkg, x, y, gpm = contour.fit_bg(img, (6,6), fititer=2)
+#    img -= bkg
+
     if pixelsize is None:
         r_units = 'pix'
         _pixelsize = 1.

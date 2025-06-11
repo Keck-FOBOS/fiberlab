@@ -77,6 +77,9 @@ def fullcone_farfield_output(img_file, bkg_file=None, pixelsize=None, distance=N
             raise ValueError('Image shape mismatch.')
         img_nobg = img - bkg
 
+#    fit_bkg, x, y, gpm = contour.fit_bg(img_nobg, (3,3), fititer=2)
+#    img -= bkg
+
     if pixelsize is None:
         r_units = 'pix'
         _pixelsize = 1.
@@ -548,7 +551,7 @@ class EECurve:
         # Create a smoothed version of the flux
         self.smooth_flux = contour.iterative_filter(self.flux, 301, 2) #, clip_iter=10, sigma=5.)
         # Create a down-sampled set of radii for the model
-        self.model_radius = numpy.linspace(0,max(self.radius),500)[1:]
+        self.model_radius = numpy.linspace(0,max(self.radius),5000)[1:]
         # Sample the smoothed flux to get the model flux
         self.model_flux = interpolate.interp1d(self.radius, self.smooth_flux,
                                                fill_value='extrapolate')(self.model_radius)

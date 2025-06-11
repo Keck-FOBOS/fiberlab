@@ -5,6 +5,7 @@ import numpy
 from scipy import stats, optimize, signal, interpolate
 from skimage import measure
 from astropy.stats import sigma_clip
+from astropy.modeling import models, fitting
 
 from IPython import embed
 
@@ -152,7 +153,6 @@ class Ellipse:
         return numpy.sqrt(_x**2 + _y**2), numpy.arctan2(_y, _x)
 
 
-
 def get_bg(img, clip_iter=None, sigma_lower=100., sigma_upper=5.):
     """
     Measure the background in an image.
@@ -193,6 +193,50 @@ def get_bg(img, clip_iter=None, sigma_lower=100., sigma_upper=5.):
     nrej = numpy.sum(numpy.ma.getmaskarray(clipped_img))
 
     return bkg, sig, nrej
+
+
+def fit_bg(img, degree, sigma_lower=30., sigma_upper=3., maxclipiters=10, cenfunc='median',
+           fititer=1):
+    """
+    """
+    # Check the input
+    if isinstance(degree, (int, numpy.integer)):
+        _deg = (degree, degree)
+    elif isinstance(degree, tuple):
+        if len(degree) != 2:
+            raise ValueError('Degree tuple must have two and only two elements.')
+        _deg = degree
+    else:
+        raise TypeError('Degree must be an integer or a tuple of two integers')
+
+    # Parse the image
+    if isinstance(img, numpy.ma.MaskedArray):
+        input_img = img.data
+        input_bpm = numpy.ma.getmaskarray(img)
+    else:
+        input_img = numpy.atleast_2d(img)
+        input_bpm = numpy.zeros(input_img.shape, dtype=bool)
+
+    # Get the 2D coordinate arrays
+    n = input_img.shape
+    y, x = numpy.mgrid[:n[0],:n[1]]
+
+    # Iteratively fit
+    p_init = models.Legendre2D(_deg[0], _deg[1])
+    fit_p = fitting.LinearLSQFitter()
+    bg_model = numpy.zeros(n, dtype=float)
+    for i in range(fititer):
+        _img = numpy.ma.MaskedArray(input_img - bg_model, mask=input_bpm)
+        _img = sigma_clip(_img, sigma_lower=sigma_lower, sigma_upper=sigma_upper,
+                          maxiters=maxclipiters, cenfunc=cenfunc)
+        gpm = numpy.logical_not(numpy.ma.getmaskarray(_img))
+        print('fitting')
+        p = fit_p(p_init, x[gpm], y[gpm], input_img[gpm])
+        print('done')
+        if i < fititer - 1:
+            bg_model = p(x, y)
+
+    return bg_model, x, y, gpm
 
 
 def iterative_filter(data, window_length, polyorder, clip_iter=None, sigma=3., **kwargs):
