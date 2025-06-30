@@ -211,11 +211,14 @@ class CollimatedFRD(scriptbase.ScriptBase):
             else:
                 f.write('# Angle sweep results\n')
                 f.write('# Radius and FWHM are in degrees.\n')
+                if args.na is not None:
+                    f.write(f'# Fastest f-ratio expected for NA={args.na}: {1/2/args.na:.2f}\n')
                 if args.fratio is None:
                     f.write('#\n')
                 else:
                     f.write(f'# Expected output f-ratio for an input f-ratio of {args.fratio}: '
                             f'{numpy.interp([args.fratio], in_fratio, out_fratio)[0]:.3f}\n#\n')
+
                 f.write(f'# {"FILE":>15} {"BKG":>15} {"THRESH":>6} {"PEAK":>10} {"RAD":>8} '
                         f'{"FWHM":>8} {"F_IN":>6} {"F_OUT":>6}\n')
                 for i in range(nangle):
