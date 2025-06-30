@@ -74,6 +74,10 @@ class CollimatedFRD(scriptbase.ScriptBase):
         parser.add_argument('--na', default=None, type=float,
                             help='The numerical aperture of the fiber.  Only used when producing '
                                  'the summary plot.')
+        parser.add_argument('--fratio', default=None, type=float,
+                            help='Interpolate the observations to predict the output f-ratio at '
+                                 'this value of the input f-ratio.  If not provided, no '
+                                 'interpolation is performed.')
         return parser
 
     @staticmethod
@@ -168,6 +172,9 @@ class CollimatedFRD(scriptbase.ScriptBase):
         else:
             a_rad = a_peak = a_fwhm = None
 
+        in_fratio = 1 / 2 / numpy.tan(numpy.radians(a_rad))
+        out_fratio = 1 / 2 / numpy.tan(numpy.radians(a_rad + a_fwhm/2))
+
         # TODO:
         #   - Save sigma and level
         #   - Create plot that shows results
@@ -203,12 +210,21 @@ class CollimatedFRD(scriptbase.ScriptBase):
                 f.write(f'# No angle-sweep images to analyze\n')
             else:
                 f.write('# Angle sweep results\n')
-                f.write('# Radius and FWHM are in degrees.\n#\n')
+                f.write('# Radius and FWHM are in degrees.\n')
+                if args.na is not None:
+                    f.write(f'# Fastest f-ratio expected for NA={args.na}: {1/2/args.na:.2f}\n')
+                if args.fratio is None:
+                    f.write('#\n')
+                else:
+                    f.write(f'# Expected output f-ratio for an input f-ratio of {args.fratio}: '
+                            f'{numpy.interp([args.fratio], in_fratio, out_fratio)[0]:.3f}\n#\n')
+
                 f.write(f'# {"FILE":>15} {"BKG":>15} {"THRESH":>6} {"PEAK":>10} {"RAD":>8} '
-                        f'{"FWHM":>8}\n')
+                        f'{"FWHM":>8} {"F_IN":>6} {"F_OUT":>6}\n')
                 for i in range(nangle):
                     f.write(f'  {afiles[i].name:>15} {a_bg[i].name:>15} {a_thresh[i]:6.1f} '
-                            f'{a_peak[i]:10.2e} {a_rad[i]:8.3f} {a_fwhm[i]:8.3f}\n')
+                            f'{a_peak[i]:10.2e} {a_rad[i]:8.3f} {a_fwhm[i]:8.3f} '
+                            f'{in_fratio[i]:6.2f} {out_fratio[i]:6.2f}\n')
 
         if args.summary is not None:
             nas = None if args.na is None else [args.na]
